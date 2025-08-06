@@ -4,7 +4,7 @@ import re
 import time
 from datetime import datetime, timezone
 
-from your_package.westie_radio.drive import (
+from tools.westie_radio.drive import (
     get_drive_service,
     get_or_create_folder,
     get_files_in_folder,
@@ -12,11 +12,11 @@ from your_package.westie_radio.drive import (
     rename_file,
     list_subfolders,
 )
-from your_package.westie_radio.sheets import (
+from tools.westie_radio.sheets import (
     create_spreadsheet,
     write_to_sheet,
 )
-from your_package.westie_radio.locks import try_lock_folder, release_folder_lock
+from tools.westie_radio.locks import try_lock_folder, release_folder_lock
 
 MIN_FILE_AGE_MINUTES = 1
 MAX_RUNTIME_SECONDS = 5 * 60

@@ -1,19 +1,19 @@
 import os
 import logging
-from your_package.westie_radio.drive import (
+from tools.westie_radio.drive import (
     get_drive_service,
     get_folder_by_name,
     get_files_in_folder,
     create_folder_if_missing,
     move_file_to_folder,
 )
-from your_package.westie_radio.sheets import (
+from tools.westie_radio.sheets import (
     create_spreadsheet,
     get_sheet_data,
     write_sheet_data,
     format_summary_sheet,
 )
-from your_package.westie_radio.locks import try_lock_folder, release_folder_lock
+from tools.westie_radio.locks import try_lock_folder, release_folder_lock
 
 DJ_SETS_FOLDER_ID = os.environ.get("DJ_SETS_FOLDER_ID")
 SUMMARY_FOLDER_NAME = "Summary"

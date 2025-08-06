@@ -1,0 +1,73 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# VS Code project settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Unit test / coverage reports
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Jupyter Notebook checkpoint files
+.ipynb_checkpoints/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Poetry
+poetry.lock
+# (keep pyproject.toml — required)
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# macOS metadata
+.DS_Store
+
+# Test output
+*.log
+*.tmp
+*.temp
+*.old
+
+# Local dev artifacts
+*.mp3
+*.wav
+*.flac
+*.aiff
+*.m4a
+credentials.base64
+credentials.json

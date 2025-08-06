@@ -1,4 +1,4 @@
-from rename_pipeline import renamer
+from tools.music_tag_sort import renamer
 
 
 def test_generate_filename_with_all_fields():

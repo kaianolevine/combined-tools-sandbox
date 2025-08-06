@@ -2,8 +2,8 @@
 sync.py — Main integration script for Westie Radio automation.
 """
 
-from your_package.westie_radio import spotify, drive, sheets
-from your_package.westie_radio import config
+from core import spotify, drive, sheets
+from tools.westie_radio import config
 from googleapiclient.errors import HttpError
 
 spreadsheet_id = config.SPREADSHEET_ID

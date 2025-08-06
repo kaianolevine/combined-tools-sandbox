@@ -2,7 +2,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
-from your_package.westie_radio import config
+from tools.westie_radio import config
 import io
 import logging
 import os

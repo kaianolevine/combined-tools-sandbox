@@ -1,4 +1,4 @@
-from rename_pipeline.renamer import rename_music_file
+from tools.music_tag_sort.renamer import rename_music_file
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 import tempfile

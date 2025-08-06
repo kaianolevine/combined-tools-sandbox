@@ -1,7 +1,7 @@
 import logging
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
-from your_package.westie_radio import config
+from tools.westie_radio import config
 
 logger = logging.getLogger(__name__)
 

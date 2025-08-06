@@ -1,7 +1,7 @@
 import argparse
 import os
-from rename_pipeline.renamer import rename_files_in_directory
-from rename_pipeline.drive_handler import process_drive_folder
+from tools.music_tag_sort.renamer import rename_files_in_directory
+from tools.music_tag_sort.drive_handler import process_drive_folder
 
 
 def main():

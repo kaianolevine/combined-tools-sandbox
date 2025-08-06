@@ -46,4 +46,4 @@ jobs:
       - name: Run sync script
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/credentials.json
-        run: poetry run python -m your_package.westie_radio.sync
+        #run: poetry run python -m your_package.westie_radio.sync

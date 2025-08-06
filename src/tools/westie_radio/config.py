@@ -1,5 +1,3 @@
-# your_package/westie_radio/config.py
-
 import os
 from dotenv import load_dotenv
 

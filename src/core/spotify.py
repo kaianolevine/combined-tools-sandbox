@@ -1,7 +1,7 @@
 import logging
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth, CacheHandler
-from your_package.westie_radio import config
+from tools.westie_radio import config
 
 logger = logging.getLogger(__name__)
 
