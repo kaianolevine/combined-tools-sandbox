@@ -1,0 +1,49 @@
+name: Scheduled Sync
+
+on:
+  schedule:
+    - cron: '20 8 * * *'   # Every day at 3:20 AM Central Time
+  repository_dispatch:
+    types: [drive-change]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+      SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+      SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+      SPOTIFY_PLAYLIST_ID: 3P0L2U6Z8wVXyDBqVOEHoz
+      M3U_FOLDER_ID: 1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o
+      SPOTIFY_REDIRECT_URI: http://127.0.0.1:8888/callback
+      SPOTIFY_USERNAME: kaianolevine
+      LOG_SHEET_NAME: Westie Radio Log
+      SPREADSHEET_ID: 11b2haIHc6l2Y8iSggrcjBcSG8dhEbL1c9n3bRJMZORU
+
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Write GCP credentials to file
+        run: |
+          echo "${{ secrets.GCP_SERVICE_ACCOUNT }}" | base64 --decode > credentials.json
+
+      - name: Run sync script
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/credentials.json
+        run: poetry run python -m your_package.westie_radio.sync

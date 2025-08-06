@@ -6,16 +6,25 @@ authors = ["Kaiano Levine <kaiano.levine@google.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [
+    { include = "core", from = "src" },
+    { include = "tools", from = "src" },
     { include = "your_package", from = "src" }
 ]
+
+[tool.poetry.scripts]
+tag-music = "tools.music_tag_sort.main:main"
+process-dj = "tools.dj_set_processor.main:main"
 
 [tool.poetry.dependencies]
 python = ">=3.13"
 gspread = "^6.0.2"
 google-auth = "^2.29.0"
-google-api-python-client = "^2.126.0"
+google-api-python-client = "^2.177.0"
 spotipy = "^2.23.0"
 python-dotenv = "^1.0.1"
+mutagen = "^1.47.0"
+pydrive2 = "^1.16.0"
+pydrive = "^1.3.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"
@@ -23,7 +32,17 @@ flake8 = "^7.2.0"
 pytest = "^8.4.0"
 pytest-cov = "^6.2.1"
 pre-commit = "^4.2.0"
+coverage = "^7.10.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 99
+target-version = ["py310"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--cov=rename_pipeline --cov-report=term-missing"
+testpaths = ["tests"]
