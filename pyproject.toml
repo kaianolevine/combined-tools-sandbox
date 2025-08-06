@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "python-project-template"
+version = "0.1.0"
+description = "Python Project Template"
+authors = ["Kaiano Levine <kaiano.levine@google.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [
+    { include = "your_package", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.13"
+gspread = "^6.0.2"
+google-auth = "^2.29.0"
+google-api-python-client = "^2.126.0"
+spotipy = "^2.23.0"
+python-dotenv = "^1.0.1"
+
+[tool.poetry.group.dev.dependencies]
+black = "^25.1.0"
+flake8 = "^7.2.0"
+pytest = "^8.4.0"
+pytest-cov = "^6.2.1"
+pre-commit = "^4.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
