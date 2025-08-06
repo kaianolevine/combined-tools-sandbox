@@ -46,3 +46,4 @@ target-version = ["py310"]
 minversion = "6.0"
 addopts = "--cov=rename_pipeline --cov-report=term-missing"
 testpaths = ["tests"]
+sync-radio = "tools.westie_radio.sync:main"

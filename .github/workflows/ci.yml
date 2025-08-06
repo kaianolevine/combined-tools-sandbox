@@ -1,37 +1,39 @@
-name: CI Pipeline
+name: CI
+
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-      SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-      M3U_FOLDER_ID: 1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
 
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+    - name: Install Poetry
+      run: |
+        pip install poetry
 
-      - name: Install dependencies with Poetry
-        run: poetry install --no-interaction
+    - name: Install dependencies
+      run: |
+        poetry install
 
-      - name: Run flake8
-        run: poetry run flake8 --max-line-length=99 src/ tests/
+    - name: Run formatting check
+      run: |
+        poetry run black --check .
 
-      - name: Run tests with coverage
-        run: poetry run pytest --cov=src/ tests/
+    - name: Run linting
+      run: |
+        poetry run flake8
+
+    - name: Run tests
+      run: |
+        poetry run pytest
