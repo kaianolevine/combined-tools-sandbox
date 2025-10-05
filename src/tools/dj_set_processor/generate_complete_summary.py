@@ -116,41 +116,24 @@ def get_file_by_name(drive_service, folder_id, filename):
     return None
 
 
-def create_spreadsheet(sheets_service, title):
+def create_spreadsheet(drive_service, sheets_service, title, folder_id):
     """
-    Creates a new Google Sheets spreadsheet with the given title.
+    Creates a new Google Sheets spreadsheet directly in the specified folder.
     Returns the spreadsheet ID.
     """
-    spreadsheet_body = {"properties": {"title": title}}
-    spreadsheet = (
-        sheets_service.spreadsheets()
-        .create(body=spreadsheet_body, fields="spreadsheetId")
-        .execute()
-    )
-    spreadsheet_id = spreadsheet.get("spreadsheetId")
-    logger.info(f'Created spreadsheet "{title}" with ID: {spreadsheet_id}')
-    return spreadsheet_id
-
-
-def move_file_to_folder(drive_service, file_id, folder_id):
-    """
-    Moves a file to a specified folder.
-    """
-    # Get current parents
-    file = (
-        drive_service.files()
-        .get(fileId=file_id, fields="parents", supportsAllDrives=True)
-        .execute()
-    )
-    previous_parents = ",".join(file.get("parents", []))
-    # Move the file to the new folder
-    drive_service.files().update(
-        fileId=file_id,
-        addParents=folder_id,
-        removeParents=previous_parents,
-        fields="id, parents",
-        supportsAllDrives=True,
+    file_metadata = {
+        'name': title,
+        'mimeType': 'application/vnd.google-apps.spreadsheet',
+        'parents': [folder_id]
+    }
+    file = drive_service.files().create(
+        body=file_metadata,
+        fields='id',
+        supportsAllDrives=True
     ).execute()
+    spreadsheet_id = file['id']
+    logger.info(f'Created spreadsheet "{title}" with ID: {spreadsheet_id} in folder {folder_id}')
+    return spreadsheet_id
 
 
 def remove_file_from_root(drive_service, file_id):
@@ -358,23 +341,19 @@ def generate_complete_summary():
         logger.error(f"Authentication failed: {e}")
         return
 
-    # Step 0: Get or create 'Summary' folder inside parent folder DJ_SETS
     try:
         summary_folder_id = get_or_create_subfolder(drive_service, DJ_SETS, "Summary")
     except HttpError as e:
         logger.error(f"Failed to get or create 'Summary' folder: {e}")
         return
 
-    # List all files in summary folder
     try:
         summary_files = list_files_in_folder(drive_service, summary_folder_id)
     except HttpError as e:
         logger.error(f"Failed to list files in Summary folder: {e}")
         return
 
-    # Determine output spreadsheet name
     output_name = "_pending_Complete Summary"
-    # Check if any file with name containing "complete summary" exists (case insensitive)
     for f in summary_files:
         if (
             f["mimeType"] == "application/vnd.google-apps.spreadsheet"
@@ -383,35 +362,25 @@ def generate_complete_summary():
             logger.warning(f'⚠️ Existing "Complete Summary" detected — using name: {output_name}')
             break
 
-    # Check if output file already exists
     existing_file = get_file_by_name(drive_service, summary_folder_id, output_name)
     if existing_file:
         master_file_id = existing_file["id"]
         logger.info(f'Using existing master file "{output_name}" with ID: {master_file_id}')
     else:
-        # Create new spreadsheet
-        master_file_id = create_spreadsheet(sheets_service, output_name)
-        # Move to summary folder
-        move_file_to_folder(drive_service, master_file_id, summary_folder_id)
-        # Remove from root folder
+        master_file_id = create_spreadsheet(drive_service, sheets_service, output_name, summary_folder_id)
         remove_file_from_root(drive_service, master_file_id)
 
-    # Open master spreadsheet info
     try:
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=master_file_id).execute()
     except HttpError as e:
         logger.error(f"Failed to open master spreadsheet: {e}")
         return
 
-    # Delete all sheets except "Sheet1"
     delete_all_sheets_except(sheets_service, master_file_id, "Sheet1")
-    # Clear "Sheet1"
     clear_sheet(sheets_service, master_file_id, "Sheet1")
 
-    # Step 1: Gather and normalize all rows from summary files
     summary_data = []
     year_set = set()
-    # We only want files named like "YYYY Summary"
     year_summary_pattern = re.compile(r"^(\d{4}) Summary$")
 
     for file in summary_files:
@@ -424,7 +393,6 @@ def generate_complete_summary():
         file_id = file["id"]
 
         try:
-            # Use helper to get first sheet name
             file_spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=file_id).execute()
             sheets_list = file_spreadsheet.get("sheets", [])
             if not sheets_list:
@@ -434,11 +402,10 @@ def generate_complete_summary():
             data = get_sheet_values(sheets_service, file_id, source_sheet_title)
             if len(data) < 2:
                 continue
-            # Normalize header row
-            # headers = normalize_header_row(data[0])
-            # lower_headers = [h.lower() for h in headers]
+            headers = [str(h).strip() for h in data[0]]
+            lower_headers = [h.lower() for h in headers]
             try:
-                pass  # count_index = lower_headers.index("count")
+                count_index = lower_headers.index("count")
             except ValueError:
                 count_index = -1
             rows = data[1:]
@@ -449,7 +416,12 @@ def generate_complete_summary():
                         count = int(row[count_index])
                     except (ValueError, TypeError):
                         count = 1
-                # summary_data.append({"year": year, "headers": headers, "row": row, "count": count})
+                summary_data.append({
+                    "year": year,
+                    "headers": headers,
+                    "row": row,
+                    "count": count
+                })
         except HttpError as e:
             logger.error(f'❌ Failed to read "{file_name}": {e}')
 
@@ -457,8 +429,7 @@ def generate_complete_summary():
         logger.warning("⚠️ No summary files found. Created empty Complete Summary.")
         return
 
-    # Step 2: Build a unified header set using lowercase deduplication
-    header_map = OrderedDict()  # lowercased => original casing
+    header_map = OrderedDict()
     for entry in summary_data:
         for h in entry["headers"]:
             key = h.lower()
@@ -468,7 +439,6 @@ def generate_complete_summary():
     years = sorted(year_set)
     final_headers = base_headers + years
 
-    # Step 3: Consolidate rows using stringified deduplication keys
     row_map = dict()
     for entry in summary_data:
         year = entry["year"]
@@ -491,13 +461,11 @@ def generate_complete_summary():
             existing_count_int = 0
         row_map[signature][year] = str(existing_count_int + count)
 
-    # Step 4: Write to sheet
     final_rows = [final_headers]
     for row_obj in row_map.values():
         final_rows.append([row_obj.get(h, "") for h in final_headers])
     set_values(sheets_service, master_file_id, "Sheet1", 1, 1, final_rows)
 
-    # Get sheet ID of "Sheet1"
     spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=master_file_id).execute()
     sheet_id = None
     for sheet in spreadsheet.get("sheets", []):
@@ -508,7 +476,6 @@ def generate_complete_summary():
         logger.error('Sheet "Sheet1" not found in master spreadsheet.')
         return
 
-    # Apply formatting using shared utilities
     set_bold_font(sheets_service, master_file_id, sheet_id, 1, 1, 1, len(final_headers))
     freeze_rows(sheets_service, master_file_id, sheet_id, 1)
     set_horizontal_alignment(
@@ -518,8 +485,7 @@ def generate_complete_summary():
         1,
         len(final_rows),
         1,
-        len(final_headers),  # ,
-        # DEFAULT_ALIGNMENT,
+        len(final_headers),
     )
     if len(final_rows) > 1:
         set_number_format(
@@ -529,8 +495,7 @@ def generate_complete_summary():
             2,
             len(final_rows),
             1,
-            len(final_headers),  # ,
-            # PLAIN_TEXT_NUMBER_FORMAT,
+            len(final_headers),
         )
     auto_resize_columns(sheets_service, master_file_id, sheet_id, 1, len(final_headers))
     logger.info(f"✅ {output_name} generated.")
