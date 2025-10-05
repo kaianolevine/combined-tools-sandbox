@@ -15,7 +15,7 @@ tag-music = "tools.music_tag_sort.main:main"
 process-dj = "tools.dj_set_processor.main:main"
 
 [tool.poetry.dependencies]
-python = ">=3.13"
+python = ">=3.11"
 gspread = "^6.0.2"
 google-auth = "^2.29.0"
 google-api-python-client = "^2.177.0"
