@@ -1,7 +1,3 @@
-import os
-import logging
-import json
-
 import time
 import re
 import logging
@@ -9,7 +5,8 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google.oauth2 import service_account
 from difflib import SequenceMatcher
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
+import google_api
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -36,12 +33,9 @@ sheets_service = build("sheets", "v4", credentials=credentials)
 
 def generate_next_missing_summary():
     logging.info("🚀 Starting generate_next_missing_summary()")
-    drive_service = get_drive_service()
-    parent_folder = (
-        drive_service.files().get(fileId=DJ_SETS_FOLDER_ID, fields="id, name").execute()
-    )
+    drive_service = google_api.get_drive_service()
 
-    summary_folder = create_folder_if_missing(
+    summary_folder = google_api.create_folder_if_missing(
         drive_service, DJ_SETS_FOLDER_ID, SUMMARY_FOLDER_NAME
     )
 
@@ -49,7 +43,7 @@ def generate_next_missing_summary():
         logging.info("🔒 Summary generation is locked. Skipping run.")
         return
 
-    year_folders = get_files_in_folder(
+    year_folders = google_api.get_files_in_folder(
         drive_service, DJ_SETS_FOLDER_ID, mime_type="application/vnd.google-apps.folder"
     )
     for folder in year_folders:
@@ -57,16 +51,15 @@ def generate_next_missing_summary():
         if year.lower() == "summary":
             continue
 
-        pending_name = f"_pending_{year} Summary"
         summary_name = f"{year} Summary"
-        existing_summaries = get_files_in_folder(
+        existing_summaries = google_api.get_files_in_folder(
             drive_service, summary_folder["id"], name_contains=summary_name
         )
         if existing_summaries:
             logging.info(f"✅ Summary already exists for {year}")
             continue
 
-        files = get_files_in_folder(
+        files = google_api.get_files_in_folder(
             drive_service, folder["id"], mime_type="application/vnd.google-apps.spreadsheet"
         )
         if any(f["name"].startswith("FAILED_") or "_Cleaned" in f["name"] for f in files):
@@ -94,7 +87,7 @@ def generate_summary_for_folder(drive_service, files, summary_folder_id, summary
 
     for f in files:
         logging.info(f"🔍 Reading {f['name']}")
-        sheets = get_sheet_data(f["id"])  # Should return list of (header, rows)
+        sheets = google_api.get_sheet_data(f["id"])  # Should return list of (header, rows)
         for header, rows in sheets:
             lower_header = [h.strip().lower() for h in header]
             keep_indices = [i for i, h in enumerate(lower_header) if h in ALLOWED_HEADERS]
@@ -127,8 +120,8 @@ def generate_summary_for_folder(drive_service, files, summary_folder_id, summary
         final_rows.sort()
 
     ss_id = create_spreadsheet(summary_name)
-    write_sheet_data(ss_id, "Summary", final_header, final_rows)
-    format_summary_sheet(ss_id, "Summary", final_header, final_rows)
+    google_api.write_sheet_data(ss_id, "Summary", final_header, final_rows)
+    google_api.format_summary_sheet(ss_id, "Summary", final_header, final_rows)
 
     move_file_to_folder(drive_service, ss_id, summary_folder_id)
     logging.info(f"✅ Summary successfully created: {summary_name}")
@@ -832,7 +825,7 @@ def deduplicate_rows_with_soft_match_complete_summary(sheet_data):
                     aligned.append(row[idx])
                 else:
                     aligned.append("")
-            signature = "|".join(aligned[p["index"]] for p in primary_indices)
+            # signature = "|".join(aligned[p["index"]] for p in primary_indices)
 
             matched = False
             for group in deduped_rows:
@@ -902,6 +895,7 @@ def deduplicate_rows_with_soft_match_complete_summary(sheet_data):
 
     return {"headers": headers, "rowsWithMeta": deduped_rows}
 
+
 def authenticate():
     """
     Authenticates and returns the Google Drive and Sheets service clients.
@@ -924,12 +918,16 @@ def get_or_create_subfolder(parent_folder_id, subfolder_name):
         f"name='{subfolder_name}' and "
         f"'{parent_folder_id}' in parents and trashed=false"
     )
-    response = drive_service.files().list(
-        q=query,
-        fields="files(id, name)",
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
-    ).execute()
+    response = (
+        drive_service.files()
+        .list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
+        .execute()
+    )
 
     files = response.get("files", [])
     if files:
@@ -940,38 +938,13 @@ def get_or_create_subfolder(parent_folder_id, subfolder_name):
         "mimeType": "application/vnd.google-apps.folder",
         "parents": [parent_folder_id],
     }
-    folder = drive_service.files().create(
-        body=file_metadata,
-        fields="id",
-        supportsAllDrives=True
-    ).execute()
+    folder = (
+        drive_service.files()
+        .create(body=file_metadata, fields="id", supportsAllDrives=True)
+        .execute()
+    )
 
     return folder.get("id")
-
-
-def list_files_in_folder(drive_service, folder_id):
-    """
-    Lists all files in a folder.
-    """
-    files = []
-    page_token = None
-    query = f"'{folder_id}' in parents and trashed=false"
-    while True:
-        response = (
-            drive_service.files()
-            .list(
-                q=query,
-                spaces="drive",
-                fields="nextPageToken, files(id, name, mimeType)",
-                pageToken=page_token,
-            )
-            .execute()
-        )
-        files.extend(response.get("files", []))
-        page_token = response.get("nextPageToken", None)
-        if page_token is None:
-            break
-    return files
 
 
 def get_file_by_name(drive_service, folder_id, filename):
@@ -985,32 +958,48 @@ def get_file_by_name(drive_service, folder_id, filename):
         return files[0]
     return None
 
-def create_spreadsheet(drive_service, name, parent_folder_id, mime_type: str = "application/vnd.google-apps.spreadsheet"):
+
+def create_spreadsheet(
+    drive_service,
+    name,
+    parent_folder_id,
+    mime_type: str = "application/vnd.google-apps.spreadsheet",
+):
     """
     Finds a file by name in the specified folder. If not found, creates a new file with that name.
     This function supports Shared Drives (supportsAllDrives=True).
     Returns the file ID.
     """
-    logger.info(f"🔍 Searching for file '{name}' in folder ID {parent_folder_id} (shared drives enabled)")
+    logger.info(
+        f"🔍 Searching for file '{name}' in folder ID {parent_folder_id} (shared drives enabled)"
+    )
     try:
         query = f"'{parent_folder_id}' in parents and name = '{name}' and mimeType = '{mime_type}' and trashed = false"
-        response = drive_service.files().list(
-            q=query,
-            spaces="drive",
-            fields="nextPageToken, files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        ).execute()
+        response = (
+            drive_service.files()
+            .list(
+                q=query,
+                spaces="drive",
+                fields="nextPageToken, files(id, name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            )
+            .execute()
+        )
         files = response.get("files", [])
         if files:
             logger.info(f"📄 Found existing file '{name}' with ID {files[0]['id']}")
             return files[0]["id"]
         else:
-            logger.info(f"➕ No existing file named '{name}' — creating new one in parent {parent_folder_id}")
+            logger.info(
+                f"➕ No existing file named '{name}' — creating new one in parent {parent_folder_id}"
+            )
             file_metadata = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
-            file = drive_service.files().create(
-                body=file_metadata, fields="id", supportsAllDrives=True
-            ).execute()
+            file = (
+                drive_service.files()
+                .create(body=file_metadata, fields="id", supportsAllDrives=True)
+                .execute()
+            )
             logger.info(f"🆕 Created new file '{name}' with ID {file['id']}")
             return file["id"]
     except HttpError as error:
@@ -1041,30 +1030,6 @@ def remove_file_from_root(drive_service, file_id):
         drive_service.files().update(
             fileId=file_id, removeParents="root", fields="id, parents"
         ).execute()
-
-
-def get_sheet_values(sheets_service, spreadsheet_id, sheet_name):
-    """
-    Retrieves all values from a sheet.
-    """
-    range_name = f"{sheet_name}"
-    result = (
-        sheets_service.spreadsheets()
-        .values()
-        .get(spreadsheetId=spreadsheet_id, range=range_name)
-        .execute()
-    )
-    values = result.get("values", [])
-    return values
-
-
-def clear_sheet(sheets_service, spreadsheet_id, sheet_name):
-    """
-    Clears all contents in a sheet.
-    """
-    sheets_service.spreadsheets().values().clear(
-        spreadsheetId=spreadsheet_id, range=sheet_name
-    ).execute()
 
 
 def delete_all_sheets_except(sheets_service, spreadsheet_id, sheet_to_keep):
@@ -1424,4 +1389,3 @@ def generate_complete_summary():
 
 if __name__ == "__main__":
     generate_complete_summary()
-

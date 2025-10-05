@@ -122,16 +122,16 @@ def create_spreadsheet(drive_service, sheets_service, title, folder_id):
     Returns the spreadsheet ID.
     """
     file_metadata = {
-        'name': title,
-        'mimeType': 'application/vnd.google-apps.spreadsheet',
-        'parents': [folder_id]
+        "name": title,
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "parents": [folder_id],
     }
-    file = drive_service.files().create(
-        body=file_metadata,
-        fields='id',
-        supportsAllDrives=True
-    ).execute()
-    spreadsheet_id = file['id']
+    file = (
+        drive_service.files()
+        .create(body=file_metadata, fields="id", supportsAllDrives=True)
+        .execute()
+    )
+    spreadsheet_id = file["id"]
     logger.info(f'Created spreadsheet "{title}" with ID: {spreadsheet_id} in folder {folder_id}')
     return spreadsheet_id
 
@@ -367,7 +367,9 @@ def generate_complete_summary():
         master_file_id = existing_file["id"]
         logger.info(f'Using existing master file "{output_name}" with ID: {master_file_id}')
     else:
-        master_file_id = create_spreadsheet(drive_service, sheets_service, output_name, summary_folder_id)
+        master_file_id = create_spreadsheet(
+            drive_service, sheets_service, output_name, summary_folder_id
+        )
         remove_file_from_root(drive_service, master_file_id)
 
     try:
@@ -416,12 +418,7 @@ def generate_complete_summary():
                         count = int(row[count_index])
                     except (ValueError, TypeError):
                         count = 1
-                summary_data.append({
-                    "year": year,
-                    "headers": headers,
-                    "row": row,
-                    "count": count
-                })
+                summary_data.append({"year": year, "headers": headers, "row": row, "count": count})
         except HttpError as e:
             logger.error(f'❌ Failed to read "{file_name}": {e}')
 
