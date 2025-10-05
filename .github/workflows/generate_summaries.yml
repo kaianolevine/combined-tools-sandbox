@@ -1,0 +1,27 @@
+name: Generate Summaries (Master Controller)
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [trigger-generate-summaries]
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Run generate_summaries
+        run: poetry run python src/tools/dj_set_processor/generate_summaries.py

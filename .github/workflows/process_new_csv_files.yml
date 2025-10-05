@@ -1,0 +1,27 @@
+name: Process New CSV Files
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [trigger-process-new-csv-files]
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Run process_new_csv_files
+        run: poetry run python src/tools/dj_set_processor/process_new_csv_files.py
