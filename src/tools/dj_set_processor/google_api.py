@@ -1,22 +1,36 @@
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
-from google.oauth2.service_account import Credentials
-
-import tools.dj_set_processor.config as config
 import io
 import os
+import json
+import tools.dj_set_processor.config as config
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 FOLDER_CACHE = {}
 
 
+def load_credentials():
+    if os.getenv("GOOGLE_CREDENTIALS_JSON"):
+        creds_dict = json.loads(os.getenv("GOOGLE_CREDENTIALS_JSON"))
+        return service_account.Credentials.from_service_account_info(creds_dict)
+    else:
+        return service_account.Credentials.from_service_account_file("credentials.json")
+
+
 def get_drive_service():
     config.logging.debug("Loading credentials and initializing Drive service")
-    creds = Credentials.from_service_account_file(
-        config.SERVICE_ACCOUNT_FILE, scopes=config.SCOPES
-    )
+    creds = load_credentials()
     service = build("drive", "v3", credentials=creds)
     config.logging.debug("Drive service initialized")
     return service
+
+
+def get_gspread_client():
+    config.logging.debug("Loading credentials and initializing gspread client")
+    creds = load_credentials()
+    gc = build("sheets", "v4", credentials=creds)
+    config.logging.debug("gspread client initialized")
+    return gc
 
 
 def get_or_create_folder(parent_folder_id: str, name: str, drive_service) -> str:
@@ -127,16 +141,6 @@ def download_file(drive, file_id, destination_path):
         status, done = downloader.next_chunk()
     fh.close()
     config.logging.info(f"⬇️ Downloaded file to {destination_path}")
-
-
-def get_gspread_client():
-    config.logging.debug("Loading credentials and initializing gspread client")
-    creds = Credentials.from_service_account_file(
-        config.SERVICE_ACCOUNT_FILE, scopes=config.SCOPES
-    )
-    gc = build("sheets", "v4", credentials=creds)
-    config.logging.debug("gspread client initialized")
-    return gc
 
 
 def apply_sheet_formatting(sheet):
