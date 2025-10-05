@@ -1,6 +1,7 @@
 import io
 import os
 import json
+import gspread
 import tools.dj_set_processor.config as config
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -10,14 +11,28 @@ FOLDER_CACHE = {}
 
 
 def load_credentials():
+    """Load credentials either from GitHub secret (GOOGLE_CREDENTIALS_JSON) or local credentials.json"""
     if os.getenv("GOOGLE_CREDENTIALS_JSON"):
         creds_dict = json.loads(os.getenv("GOOGLE_CREDENTIALS_JSON"))
-        return service_account.Credentials.from_service_account_info(creds_dict)
+        return service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=[
+                "https://www.googleapis.com/auth/drive",
+                "https://www.googleapis.com/auth/spreadsheets",
+            ],
+        )
     else:
-        return service_account.Credentials.from_service_account_file("credentials.json")
+        return service_account.Credentials.from_service_account_file(
+            "credentials.json",
+            scopes=[
+                "https://www.googleapis.com/auth/drive",
+                "https://www.googleapis.com/auth/spreadsheets",
+            ],
+        )
 
 
 def get_drive_service():
+    """Return a Drive API client"""
     config.logging.debug("Loading credentials and initializing Drive service")
     creds = load_credentials()
     service = build("drive", "v3", credentials=creds)
@@ -26,9 +41,10 @@ def get_drive_service():
 
 
 def get_gspread_client():
+    """Return a gspread client (not Google API resource)"""
     config.logging.debug("Loading credentials and initializing gspread client")
     creds = load_credentials()
-    gc = build("sheets", "v4", credentials=creds)
+    gc = gspread.authorize(creds)  # <-- THIS is the difference
     config.logging.debug("gspread client initialized")
     return gc
 
