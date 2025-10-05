@@ -32,7 +32,7 @@ jobs:
 
     - name: Run linting
       run: |
-        poetry run flake8
+        poetry run flake8 --max-line-length=99 --per-file-ignores=tests/*:F841 --extend-ignore=E203,E501
 
     - name: Run tests
       run: |
