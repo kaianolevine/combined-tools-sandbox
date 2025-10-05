@@ -22,9 +22,9 @@ def generate_next_missing_summary():
     )
     config.logger.debug(f"Summary folder: {summary_folder}")
 
-    if not helpers.try_lock_folder(config.SUMMARY_FOLDER_NAME):
-        config.logger.info("🔒 Summary generation is locked. Skipping run.")
-        return
+    # if not helpers.try_lock_folder(config.SUMMARY_FOLDER_NAME):
+    #    config.logger.info("🔒 Summary generation is locked. Skipping run.")
+    #    return
 
     year_folders = google_api.get_files_in_folder(
         drive_service, config.DJ_SETS_FOLDER_ID, mime_type="application/vnd.google-apps.folder"
