@@ -3,6 +3,11 @@
 import time
 import re
 
+import google_api
+import tools.dj_set_processor.config as config
+from difflib import SequenceMatcher
+from googleapiclient.errors import HttpError
+
 # Constants
 DJ_SETS = "11zVwUZLDfB6uXpwNdA3c4Xsev2aG26fc"  # My Drive/Deejay Marvel/DJ Sets
 CSV_FILES = "1YskZ8sD2H0bA9rxzWnE8iV15P7kWRk8N"  # My Drive/Deejay Marvel/CSV-Uploaded
@@ -14,7 +19,105 @@ desiredOrder = ["Title", "Remix", "Artist", "Comment", "Genre", "Year", "BPM", "
 _folder_locks = {}
 
 
+def get_shared_filled_fields(data1, data2, indices):
+    count = 0
+    for idx in indices:
+        v1 = data1[idx["index"]]
+        v2 = data2[idx["index"]]
+        if v1 and v2:
+            count += 1
+    return count
+
+
+def get_dedup_match_score(data1, data2, indices):
+    total_score = 0
+    count = 0
+    for idx in indices:
+        v1 = str(data1[idx["index"]] or "")
+        v2 = str(data2[idx["index"]] or "")
+        if v1 and v2:
+            total_score += string_similarity(v1, v2)
+            count += 1
+    if count == 0:
+        return 0
+    return total_score / count
+
+
+def string_similarity(a, b):
+    """
+    Returns a similarity score between 0 and 1 for two strings.
+    """
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def clean_title(title):
+    """
+    Clean title string for comparison: lowercase and strip.
+    """
+    return title.lower().strip()
+
+
+def hex_to_rgb(hex_color):
+    """
+    Convert hex color string like '#fff3b0' to dict with red, green, blue floats 0-1.
+    """
+    hex_color = hex_color.lstrip("#")
+    lv = len(hex_color)
+    if lv == 6:
+        r, g, b = tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
+    elif lv == 3:
+        r, g, b = tuple(int(hex_color[i] * 2, 16) for i in range(3))
+    else:
+        r, g, b = (255, 255, 255)
+    return {"red": r / 255, "green": g / 255, "blue": b / 255}
+
+
 def try_lock_folder(folder_name):
+    """
+    Emulate folder locking by creating a lock file inside the folder.
+    Returns True if lock acquired, False if already locked.
+    """
+    drive_service = google_api.get_drive_service()
+    folder_id = config.DJ_SETS
+    summary_folder_id = get_or_create_subfolder(drive_service, folder_id, folder_name)
+    query = (
+        f"'{summary_folder_id}' in parents and name='{config.LOCK_FILE_NAME}' and trashed=false"
+    )
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    files = results.get("files", [])
+    if files:
+        config.logger.info(f"🔒 {folder_name} folder is locked — skipping.")
+        return False
+    # Create lock file
+    file_metadata = {
+        "name": config.LOCK_FILE_NAME,
+        "parents": [summary_folder_id],
+        "mimeType": "application/octet-stream",
+    }
+    drive_service.files().create(body=file_metadata).execute()
+    return True
+
+
+def release_folder_lock(folder_name):
+    """
+    Remove the lock file to release the lock.
+    """
+    drive_service = google_api.get_drive_service()
+    folder_id = config.DJ_SETS
+    summary_folder_id = get_or_create_subfolder(drive_service, folder_id, folder_name)
+    query = (
+        f"'{summary_folder_id}' in parents and name='{config.LOCK_FILE_NAME}' and trashed=false"
+    )
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    files = results.get("files", [])
+    for f in files:
+        try:
+            drive_service.files().delete(fileId=f["id"]).execute()
+        except HttpError as e:
+            config.logger.error(f"Error releasing lock: {e}")
+
+
+def _try_lock_folder(folder_name):
     """Try to acquire a lock for a specific folder name."""
     now = time.time() * 1000
     expires_in = 7 * 60 * 1000  # 7 minutes
@@ -26,13 +129,13 @@ def try_lock_folder(folder_name):
     return True
 
 
-def release_folder_lock(folder_name):
+def _release_folder_lock(folder_name):
     """Release the lock for a specific folder name."""
     key = f"LOCK_{folder_name}"
     _folder_locks.pop(key, None)
 
 
-def clean_title(value):
+def _clean_title(value):
     """Remove parenthetical phrases from a title string (e.g., '(Remix)')."""
     return re.sub(r"\s*\([^)]*\)", "", str(value or "")).strip()
 
@@ -52,7 +155,7 @@ def levenshtein_distance(a, b):
     return dp[m][n]
 
 
-def string_similarity(a, b):
+def _string_similarity(a, b):
     """Calculate normalized string similarity between two strings."""
     if not a or not b:
         return 0
@@ -60,7 +163,7 @@ def string_similarity(a, b):
     return 1 - d / max(len(a), len(b))
 
 
-def get_shared_filled_fields(row_a, row_b, dedup_indices):
+def _get_shared_filled_fields(row_a, row_b, dedup_indices):
     """Count how many deduplication fields are filled in both rows."""
     return sum(
         1
@@ -70,7 +173,7 @@ def get_shared_filled_fields(row_a, row_b, dedup_indices):
     )
 
 
-def get_dedup_match_score(row_a, row_b, dedup_indices):
+def _get_dedup_match_score(row_a, row_b, dedup_indices):
     """Evaluate similarity score across deduplication fields."""
     total = 0
     matches = 0

@@ -54,6 +54,8 @@ def normalize_prefixes_in_source(drive):
                 prefix = original_name[:7]
             elif lower.startswith("possible_duplicate_"):
                 prefix = original_name[:19]
+            elif lower.startswith("copy of "):
+                prefix = original_name[:8]
 
             if prefix:
                 new_name = original_name[len(prefix) :]
@@ -189,7 +191,23 @@ def main():
             # Apply formatting only if sheet was populated with valid data
             google_api.apply_formatting_to_sheet(sheet_id)
 
-            # Commented out to prevent deletion of original files during testing
+            # Move original file to Archive subfolder instead of deleting
+            try:
+                archive_folder_id = google_api.get_or_create_folder(
+                    year_folder_id, "Archive", drive
+                )
+                drive.files().update(
+                    fileId=file_id,
+                    addParents=archive_folder_id,
+                    removeParents=config.CSV_SOURCE_FOLDER_ID,
+                    supportsAllDrives=True,
+                ).execute()
+                config.logging.info(f"📦 Moved original file to Archive subfolder: {filename}")
+            except Exception as move_exc:
+                config.logging.error(
+                    f"Failed to move original file to Archive subfolder: {move_exc}"
+                )
+
             # drive.files().delete(fileId=file_id, supportsAllDrives=True).execute()
             # config.logging.info(f"🗑️ Deleted original file from Drive: {filename}")
 
