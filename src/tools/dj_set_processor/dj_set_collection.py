@@ -356,7 +356,7 @@ def extract_date_and_title(file_name: str) -> Tuple[str, str]:
 def generate_dj_set_collection():
     config.logger.info("🚀 Starting generate_dj_set_collection")
     drive_service = google_api.get_drive_service()
-    sheets_service = google_api.get_gspread_client()
+    sheets_service = google_api.get_sheets_service()
 
     # Locate DJ_SETS folder (we assume the constant ID points to the shared drive folder or folder in shared drive)
     parent_folder_id = config.DJ_SETS

@@ -32,21 +32,20 @@ def load_credentials():
 
 
 def get_drive_service():
-    """Return a Drive API client"""
-    config.logging.debug("Loading credentials and initializing Drive service")
     creds = load_credentials()
-    service = build("drive", "v3", credentials=creds)
-    config.logging.debug("Drive service initialized")
-    return service
+    return build("drive", "v3", credentials=creds)
+
+
+def get_sheets_service():
+    """Return raw Sheets API client (Google API Resource)"""
+    creds = load_credentials()
+    return build("sheets", "v4", credentials=creds)
 
 
 def get_gspread_client():
-    """Return a gspread client (not Google API resource)"""
-    config.logging.debug("Loading credentials and initializing gspread client")
+    """Return gspread client for convenient worksheet editing"""
     creds = load_credentials()
-    gc = gspread.authorize(creds)  # <-- THIS is the difference
-    config.logging.debug("gspread client initialized")
-    return gc
+    return gspread.authorize(creds)
 
 
 def get_or_create_folder(parent_folder_id: str, name: str, drive_service) -> str:
