@@ -71,3 +71,4 @@ venv.bak/
 *.m4a
 credentials.base64
 credentials.json
+src/tools/dj_set_processor/ignore/*
