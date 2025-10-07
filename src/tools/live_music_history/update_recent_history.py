@@ -10,14 +10,14 @@ from urllib.parse import urlencode
 
 # --- CONFIG ---
 FOLDER_ID = '1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o'
-SHEET_ID = '17A6vaqRtjMy5fcG8BFeaHqLBfzJDcrwg-JdsGyPZBng'
+SHEET_ID = '1DpUCQWK3vGGdzUC5JmXVeojqsM_hp7U2DcSEGq6cF-U'
 HISTORY_IN_HOURS = 3
 NO_HISTORY = 'No_recent_history_found'
 TIMEZONE = 'America/Chicago'  # adjust as needed
 
 # --- AUTH ---
 SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
-SERVICE_ACCOUNT_FILE = 'service.json'   # <-- your credentials json
+SERVICE_ACCOUNT_FILE = 'credentials.json'   # <-- your credentials json
 
 creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 drive_service = build('drive', 'v3', credentials=creds)
@@ -141,7 +141,10 @@ def parse_m3u_and_insert_to_sheet():
 
     # parse new
     new_entries = parse_m3u_lines(lines, existing_keys, file_date_str)
-    new_entries = [r for r in new_entries if datetime.datetime.strptime(r[0], "%Y-%m-%d %H:%M") >= cutoff]
+    new_entries = [
+        r for r in new_entries
+        if tz.localize(datetime.datetime.strptime(r[0], "%Y-%m-%d %H:%M")) >= cutoff
+    ]
     combined = existing_data + new_entries
 
     # clear old
