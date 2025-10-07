@@ -9,26 +9,29 @@ from google.oauth2 import service_account
 from urllib.parse import urlencode
 
 # --- CONFIG ---
-FOLDER_ID = '1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o'
-SHEET_ID = '1DpUCQWK3vGGdzUC5JmXVeojqsM_hp7U2DcSEGq6cF-U'
+FOLDER_ID = "1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o"
+SHEET_ID = "1DpUCQWK3vGGdzUC5JmXVeojqsM_hp7U2DcSEGq6cF-U"
 HISTORY_IN_HOURS = 3
-NO_HISTORY = 'No_recent_history_found'
-TIMEZONE = 'America/Chicago'  # adjust as needed
+NO_HISTORY = "No_recent_history_found"
+TIMEZONE = "America/Chicago"  # adjust as needed
 
 # --- AUTH ---
-SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
-SERVICE_ACCOUNT_FILE = 'credentials.json'   # <-- your credentials json
+SCOPES = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
+SERVICE_ACCOUNT_FILE = "credentials.json"  # <-- your credentials json
 
 creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-drive_service = build('drive', 'v3', credentials=creds)
-sheets_service = build('sheets', 'v4', credentials=creds)
+drive_service = build("drive", "v3", credentials=creds)
+sheets_service = build("sheets", "v4", credentials=creds)
+
 
 # --- HELPERS ---
 def log(msg, *args):
     print(msg % args if args else msg)
 
+
 def format_date(dt: datetime.datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M")
+
 
 def parse_time_str(time_str):
     try:
@@ -37,10 +40,13 @@ def parse_time_str(time_str):
     except Exception:
         return 0
 
+
 def extract_tag_value(line, tag):
     import re
+
     match = re.search(rf"<{tag}>(.*?)</{tag}>", line, re.I)
-    return match.group(1).strip() if match else ''
+    return match.group(1).strip() if match else ""
+
 
 def build_youtube_links(entries):
     links = []
@@ -50,17 +56,23 @@ def build_youtube_links(entries):
         links.append([f'=HYPERLINK("{url}", "YouTube Search")'])
     return links
 
+
 # --- CORE ---
 def get_most_recent_m3u_file():
-    results = drive_service.files().list(
-        q=f"'{FOLDER_ID}' in parents and name contains '.m3u' and trashed = false",
-        fields="files(id, name)"
-    ).execute()
+    results = (
+        drive_service.files()
+        .list(
+            q=f"'{FOLDER_ID}' in parents and name contains '.m3u' and trashed = false",
+            fields="files(id, name)",
+        )
+        .execute()
+    )
     files = results.get("files", [])
     if not files:
         return None
     files.sort(key=lambda f: f["name"])
     return files[-1]
+
 
 def parse_m3u_lines(lines, existing_keys, file_date_str):
     tz = pytz.timezone(TIMEZONE)
@@ -88,6 +100,7 @@ def parse_m3u_lines(lines, existing_keys, file_date_str):
                     existing_keys.add(key)
     return entries
 
+
 def parse_m3u_and_insert_to_sheet():
     tz = pytz.timezone(TIMEZONE)
     now = datetime.datetime.now(tz)
@@ -99,17 +112,20 @@ def parse_m3u_and_insert_to_sheet():
 
     # update last run time
     sheet.values().update(
-        spreadsheetId=SHEET_ID, range="A3",
-        valueInputOption="RAW", body={"values": [[format_date(now)]]}
+        spreadsheetId=SHEET_ID,
+        range="A3",
+        valueInputOption="RAW",
+        body={"values": [[format_date(now)]]},
     ).execute()
 
     if not m3u_file:
         log("No .m3u files found.")
         sheet.values().clear(spreadsheetId=SHEET_ID, range="A5:D").execute()
         sheet.values().update(
-            spreadsheetId=SHEET_ID, range="A5:B5",
+            spreadsheetId=SHEET_ID,
+            range="A5:B5",
             valueInputOption="RAW",
-            body={"values": [[format_date(now), NO_HISTORY]]}
+            body={"values": [[format_date(now), NO_HISTORY]]},
         ).execute()
         return
 
@@ -142,7 +158,8 @@ def parse_m3u_and_insert_to_sheet():
     # parse new
     new_entries = parse_m3u_lines(lines, existing_keys, file_date_str)
     new_entries = [
-        r for r in new_entries
+        r
+        for r in new_entries
         if tz.localize(datetime.datetime.strptime(r[0], "%Y-%m-%d %H:%M")) >= cutoff
     ]
     combined = existing_data + new_entries
@@ -153,23 +170,28 @@ def parse_m3u_and_insert_to_sheet():
     if not combined:
         log("No recent entries.")
         sheet.values().update(
-            spreadsheetId=SHEET_ID, range="A5:B5",
+            spreadsheetId=SHEET_ID,
+            range="A5:B5",
             valueInputOption="RAW",
-            body={"values": [[format_date(now), NO_HISTORY]]}
+            body={"values": [[format_date(now), NO_HISTORY]]},
         ).execute()
         return
 
     # write values
     sheet.values().update(
-        spreadsheetId=SHEET_ID, range=f"A5:C{5+len(combined)-1}",
-        valueInputOption="RAW", body={"values": combined}
+        spreadsheetId=SHEET_ID,
+        range=f"A5:C{5+len(combined)-1}",
+        valueInputOption="RAW",
+        body={"values": combined},
     ).execute()
 
     # write links
     links = build_youtube_links(combined)
     sheet.values().update(
-        spreadsheetId=SHEET_ID, range=f"D5:D{5+len(links)-1}",
-        valueInputOption="USER_ENTERED", body={"values": links}
+        spreadsheetId=SHEET_ID,
+        range=f"D5:D{5+len(links)-1}",
+        valueInputOption="USER_ENTERED",
+        body={"values": links},
     ).execute()
 
     log("Script finished. Rows written: %d", len(combined))
