@@ -3,7 +3,7 @@
 import time
 import re
 
-import google_api
+import tools.dj_set_processor.google_api as google_api
 import tools.dj_set_processor.config as config
 from difflib import SequenceMatcher
 from googleapiclient.errors import HttpError
