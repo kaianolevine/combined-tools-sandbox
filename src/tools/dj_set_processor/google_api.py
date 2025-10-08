@@ -889,6 +889,11 @@ def delete_sheet_by_name(sheets_service, spreadsheet_id: str, sheet_name: str):
     try:
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         sheets = spreadsheet.get("sheets", [])
+        if len(sheets) <= 1:
+            config.logger.warning(
+                f"Not deleting sheet '{sheet_name}': spreadsheet only has one sheet."
+            )
+            return
         sheet_id = None
         for sheet in sheets:
             if sheet["properties"]["title"] == sheet_name:
