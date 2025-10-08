@@ -5,6 +5,10 @@ on:
   repository_dispatch:
     types: [new_csv_dj_sets]
 
+concurrency:
+  group: dj-set-collection
+  cancel-in-progress: false
+
 jobs:
   run-script:
     runs-on: ubuntu-latest
