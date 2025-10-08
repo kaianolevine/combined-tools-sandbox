@@ -7,6 +7,9 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
 from urllib.parse import urlencode
+import json
+import os
+from google.oauth2 import service_account
 
 # --- CONFIG ---
 FOLDER_ID = "1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o"
@@ -16,13 +19,25 @@ NO_HISTORY = "No_recent_history_found"
 TIMEZONE = "America/Chicago"  # adjust as needed
 
 # --- AUTH ---
-SCOPES = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
-SERVICE_ACCOUNT_FILE = "credentials.json"  # <-- your credentials json
+SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/spreadsheets",
+]
 
-creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+def get_credentials():
+    # Prefer env var (for GitHub Actions)
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    if creds_json:
+        info = json.loads(creds_json)
+        return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+
+    # Fallback to local file (for local runs)
+    SERVICE_ACCOUNT_FILE = "credentials.json"
+    return service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+
+creds = get_credentials()
 drive_service = build("drive", "v3", credentials=creds)
 sheets_service = build("sheets", "v4", credentials=creds)
-
 
 # --- HELPERS ---
 def log(msg, *args):
