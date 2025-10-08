@@ -26,7 +26,7 @@ SCOPES = [
 
 def get_credentials():
     # Prefer env var (for GitHub Actions)
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     if creds_json:
         info = json.loads(creds_json)
         return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
