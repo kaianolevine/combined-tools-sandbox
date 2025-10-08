@@ -3,7 +3,7 @@ name: Create DJ Set Collection
 on:
   workflow_dispatch:
   repository_dispatch:
-    types: [trigger-create-dj-set-collection]
+    types: [updated_dj_sets]
 
 jobs:
   run-script:

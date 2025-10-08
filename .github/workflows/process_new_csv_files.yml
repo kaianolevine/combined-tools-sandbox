@@ -3,7 +3,7 @@ name: Process New CSV Files
 on:
   workflow_dispatch:
   repository_dispatch:
-    types: [trigger-process-new-csv-files]
+    types: [new_csv_dj_sets]
 
 jobs:
   run-script:
