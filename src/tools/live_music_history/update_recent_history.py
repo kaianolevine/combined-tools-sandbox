@@ -2,14 +2,13 @@ from __future__ import print_function
 import os
 import io
 import pytz
+import json
 import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
 from urllib.parse import urlencode
-import json
-import os
-from google.oauth2 import service_account
+
 
 # --- CONFIG ---
 FOLDER_ID = "1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o"
@@ -24,6 +23,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
 
+
 def get_credentials():
     # Prefer env var (for GitHub Actions)
     creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
@@ -33,11 +33,15 @@ def get_credentials():
 
     # Fallback to local file (for local runs)
     SERVICE_ACCOUNT_FILE = "credentials.json"
-    return service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    return service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    )
+
 
 creds = get_credentials()
 drive_service = build("drive", "v3", credentials=creds)
 sheets_service = build("sheets", "v4", credentials=creds)
+
 
 # --- HELPERS ---
 def log(msg, *args):
@@ -166,7 +170,7 @@ def parse_m3u_and_insert_to_sheet():
                 dt = datetime.datetime.strptime(row[0], "%Y-%m-%d %H:%M")
                 if dt >= cutoff:
                     existing_data.append(row[:3])
-            except:
+            except Exception:
                 pass
     existing_keys = {"||".join(c.strip().lower() for c in r) for r in existing_data}
 
