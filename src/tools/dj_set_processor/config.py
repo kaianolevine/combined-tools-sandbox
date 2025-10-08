@@ -11,7 +11,7 @@ SERVICE_ACCOUNT_FILE = "credentials.json"
 ALLOWED_HEADERS = ["title", "artist", "remix", "comment", "genre", "length", "bpm", "year"]
 
 SUMMARY_FOLDER_NAME = "Summary"
-SUMMARY_TAB_NAME = "Summary"
+SUMMARY_TAB_NAME = "Summary_Tab"
 LOCK_FILE_NAME = ".lock_summary_folder"
 TEMP_TAB_NAME = "TempClear"
 OUTPUT_NAME = "DJ Set Collection"

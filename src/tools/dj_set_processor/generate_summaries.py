@@ -6,7 +6,6 @@ from googleapiclient.errors import HttpError
 
 import google_api
 import tools.dj_set_processor.config as config
-import tools.dj_set_processor.helpers as helpers
 
 
 def generate_next_missing_summary():
@@ -52,19 +51,19 @@ def generate_next_missing_summary():
             config.logger.info(f"⛔ Skipping year {year} — unready files found")
             continue
 
-        if not helpers.try_lock_folder(year):
-            config.logger.info(f"🔒 Year {year} is locked. Skipping.")
-            continue
+        # if not helpers.try_lock_folder(year):
+        #    config.logger.info(f"🔒 Year {year} is locked. Skipping.")
+        #    continue
 
-        try:
-            config.logger.debug(f"Files to process for {year}: {[f['name'] for f in files]}")
-            config.logger.info(f"🔧 Generating summary for {year}...")
-            generate_summary_for_folder(
-                drive_service, sheet_service, files, summary_folder, summary_name, year
-            )
-        finally:
-            helpers.release_folder_lock(year)
-            helpers.release_folder_lock(config.SUMMARY_FOLDER_NAME)
+        # try:
+        config.logger.debug(f"Files to process for {year}: {[f['name'] for f in files]}")
+        config.logger.info(f"🔧 Generating summary for {year}...")
+        generate_summary_for_folder(
+            drive_service, sheet_service, files, summary_folder, summary_name, year
+        )
+        # finally:
+        #    helpers.release_folder_lock(year)
+        #    helpers.release_folder_lock(config.SUMMARY_FOLDER_NAME)
 
 
 def generate_summary_for_folder(
@@ -148,10 +147,72 @@ def generate_summary_for_folder(
         drive_service, name=summary_name, parent_folder_id=summary_folder_id
     )
     config.logger.debug(f"Created spreadsheet ID for {summary_name}: {ss_id}")
-    config.logger.debug(f"Writing data to sheet 'Summary' with {len(final_rows)} rows")
+
+    # Ensure a sheet named "Summary" exists
+    spreadsheet_info = sheet_service.spreadsheets().get(spreadsheetId=ss_id).execute()
+    sheets = spreadsheet_info.get("sheets", [])
+    found_summary = False
+    for sheet in sheets:
+        if sheet.get("properties", {}).get("title") == "Summary":
+            found_summary = True
+            break
+    if not found_summary and sheets:
+        # Rename the first sheet to "Summary"
+        first_sheet_id = sheets[0]["properties"]["sheetId"]
+        google_api.rename_sheet(sheet_service, ss_id, first_sheet_id, "Summary")
+
+    # Delete all sheets except "Summary"
+    config.logger.info(f"Deleting all sheets except 'Summary' in spreadsheet {ss_id}")
+    google_api.delete_all_sheets_except(sheet_service, ss_id, "Summary")
+    config.logger.debug("All sheets except 'Summary' deleted.")
+
+    # Write summary data to "Summary" sheet
+    config.logger.info(f"Writing summary data to 'Summary' sheet with {len(final_rows)} rows")
     google_api.write_sheet_data(sheet_service, ss_id, "Summary", final_header, final_rows)
-    config.logger.debug("Formatting summary sheet")
-    google_api.format_summary_sheet(sheet_service, ss_id, "Summary", final_header, final_rows)
+    config.logger.debug("Summary data written to 'Summary' sheet.")
+
+    # Format the "Summary" sheet
+    config.logger.info("Formatting 'Summary' sheet")
+    # Get sheet ID for "Summary"
+    spreadsheet = sheet_service.spreadsheets().get(spreadsheetId=ss_id).execute()
+    summary_sheet_id = None
+    for sheet in spreadsheet.get("sheets", []):
+        if sheet["properties"]["title"] == "Summary":
+            summary_sheet_id = sheet["properties"]["sheetId"]
+            break
+    if summary_sheet_id is None:
+        config.logger.error('Sheet "Summary" not found in spreadsheet.')
+        return
+    # Set header row bold
+    google_api.set_bold_font(sheet_service, ss_id, summary_sheet_id, 1, 1, 1, len(final_header))
+    # Freeze header row
+    google_api.freeze_rows(sheet_service, ss_id, summary_sheet_id, 1)
+    # Set horizontal alignment to left for all data
+    google_api.set_horizontal_alignment(
+        sheet_service,
+        ss_id,
+        summary_sheet_id,
+        1,
+        len(final_rows) + 1,
+        1,
+        len(final_header),
+        "LEFT",
+    )
+    # Set number format to text for data rows (excluding header)
+    if len(final_rows) > 0:
+        google_api.set_number_format(
+            sheet_service,
+            ss_id,
+            summary_sheet_id,
+            2,
+            len(final_rows) + 1,
+            1,
+            len(final_header),
+            "@STRING@",
+        )
+    # Auto resize columns and adjust width with max 200 pixels
+    google_api.auto_resize_columns(sheet_service, ss_id, summary_sheet_id, 1, len(final_header))
+    config.logger.info("Formatting of 'Summary' sheet complete.")
 
     config.logger.debug(f"Moving spreadsheet {ss_id} to folder {summary_folder_id}")
     # google_api.move_file_to_folder(drive_service, ss_id, summary_folder_id)

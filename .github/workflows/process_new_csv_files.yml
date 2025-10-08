@@ -28,3 +28,6 @@ jobs:
 
       - name: Run process_new_csv_files
         run: poetry run python src/tools/dj_set_processor/process_new_csv_files.py
+
+      - name: Run create_dj_set_collection
+        run: poetry run python src/tools/dj_set_processor/dj_set_collection.py

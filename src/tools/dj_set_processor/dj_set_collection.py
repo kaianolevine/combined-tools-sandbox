@@ -28,6 +28,7 @@ def generate_dj_set_collection():
 
     # Enumerate subfolders in DJ_SETS
     subfolders = google_api.get_all_subfolders(drive_service, parent_folder_id)
+    config.logger.debug(f"Retrieved {len(subfolders)} subfolders")
     subfolders.sort(key=lambda f: f["name"], reverse=True)
 
     tabs_to_add: List[str] = []
@@ -38,13 +39,22 @@ def generate_dj_set_collection():
         config.logger.info(f"📁 Processing folder: {name} (id: {folder_id})")
 
         files = google_api.get_files_in_folder(drive_service, folder_id)
+        config.logger.debug(f"Found {len(files)} files in folder '{name}'")
         rows = []
 
         for f in files:
-            if f.get("mimeType") != "application/vnd.google-apps.spreadsheet":
+            file_name = f.get("name", "")
+            mime_type = f.get("mimeType", "")
+            file_url = f"https://docs.google.com/spreadsheets/d/{f.get('id', '')}"
+            config.logger.debug(
+                f"Processing file: Name='{file_name}', MIME='{mime_type}', URL='{file_url}'"
+            )
+
+            if file_name.lower() == "archive":
+                config.logger.info(f"⏭️ Skipping folder: {name} (archive folder)")
                 continue
-            file_name = f["name"]
-            file_url = f"https://docs.google.com/spreadsheets/d/{f['id']}"
+            # if mime_type != "application/vnd.google-apps.spreadsheet":
+            #    continue
 
             if name.lower() == "summary":
                 year_match = re.match(r"^(\d{4})", file_name)
@@ -59,8 +69,9 @@ def generate_dj_set_collection():
                 complete = [r for r in rows if not r[0]]
                 others = sorted([r for r in rows if r[0]], key=lambda r: r[0], reverse=True)
                 all_rows = complete + others
+                config.logger.debug(f"Adding Summary sheet with {len(all_rows)} rows")
                 # add Summary sheet
-                config.logger.info("➕ Adding Summary sheet and inserting rows")
+                config.logger.info("➕ Adding Summary sheet")
                 sheets_service.spreadsheets().batchUpdate(
                     spreadsheetId=spreadsheet_id,
                     body={
@@ -69,39 +80,45 @@ def generate_dj_set_collection():
                         ]
                     },
                 ).execute()
+                config.logger.info("Inserting rows into Summary sheet")
                 google_api.insert_rows(
                     sheets_service,
                     spreadsheet_id,
                     config.SUMMARY_TAB_NAME,
                     [["Year", "Link"]] + all_rows,
                 )
+                config.logger.info("Setting column formatting for Summary sheet")
                 google_api.set_column_formatting(
                     sheets_service, spreadsheet_id, config.SUMMARY_TAB_NAME, 2
                 )
         elif rows:
             rows.sort(key=lambda r: r[0], reverse=True)
-            config.logger.info(
-                f"➕ Adding sheet for folder '{name}' and inserting {len(rows)} rows"
-            )
+            config.logger.debug(f"Adding sheet for folder '{name}' with {len(rows)} rows")
+            config.logger.info(f"➕ Adding sheet for folder '{name}'")
             sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id,
                 body={"requests": [{"addSheet": {"properties": {"title": name}}}]},
             ).execute()
+            config.logger.info(f"Inserting rows into sheet '{name}'")
             google_api.insert_rows(
                 sheets_service, spreadsheet_id, name, [["Date", "Name", "Link"]] + rows
             )
+            config.logger.info(f"Setting column formatting for sheet '{name}'")
             google_api.set_column_formatting(sheets_service, spreadsheet_id, name, 3)
             tabs_to_add.append(name)
 
     # Clean up temp sheets if any
+    config.logger.info(f"Deleting temp sheets: {config.TEMP_TAB_NAME} and 'Sheet1' if they exist")
     google_api.delete_sheet_by_name(sheets_service, spreadsheet_id, config.TEMP_TAB_NAME)
     google_api.delete_sheet_by_name(sheets_service, spreadsheet_id, "Sheet1")
 
     # Reorder sheets: tabs_to_add then Summary
+    config.logger.info(f"Reordering sheets with order: {tabs_to_add + [config.SUMMARY_TAB_NAME]}")
     metadata = google_api.get_spreadsheet_metadata(sheets_service, spreadsheet_id)
     google_api.reorder_sheets(
         sheets_service, spreadsheet_id, tabs_to_add + [config.SUMMARY_TAB_NAME], metadata
     )
+    config.logger.info("Completed reordering sheets")
 
     config.logger.info("✅ Finished generate_dj_set_collection")
 

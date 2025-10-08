@@ -1,10 +1,9 @@
 import io
 import os
 import json
-import re
 import gspread
 import tools.dj_set_processor.config as config
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
@@ -981,15 +980,6 @@ def reorder_sheets(
         raise
 
 
-def extract_date_and_title(file_name: str) -> Tuple[str, str]:
-    match = re.match(r"^(\d{4}-\d{2}-\d{2})(.*)", file_name)
-    if not match:
-        return ("", file_name)
-    date = match[1]
-    title = match[2].lstrip("-_ ")
-    return (date, title)
-
-
 def find_or_create_file_by_name(
     drive_service,
     name: str,
@@ -1189,3 +1179,20 @@ def get_sheet_id_by_name(sheet_service, spreadsheet_id: str, sheet_name: str) ->
         if sheet.get("properties", {}).get("title") == sheet_name:
             return sheet.get("properties", {}).get("sheetId")
     raise ValueError(f"Sheet '{sheet_name}' not found in spreadsheet.")
+
+
+def rename_sheet(sheets_service, spreadsheet_id, sheet_id, new_title):
+    """
+    Renames a sheet within a spreadsheet.
+    """
+    body = {
+        "requests": [
+            {
+                "updateSheetProperties": {
+                    "properties": {"sheetId": sheet_id, "title": new_title},
+                    "fields": "title",
+                }
+            }
+        ]
+    }
+    sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()

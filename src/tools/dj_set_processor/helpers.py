@@ -6,6 +6,7 @@ import re
 import tools.dj_set_processor.google_api as google_api
 import tools.dj_set_processor.config as config
 from difflib import SequenceMatcher
+from typing import Tuple
 from googleapiclient.errors import HttpError
 
 # Constants
@@ -198,3 +199,12 @@ def get_or_create_subfolder(parent, name):
     """Placeholder for Drive API get-or-create subfolder logic."""
     # This should be implemented with the actual Drive API client
     raise NotImplementedError("Drive API subfolder management not implemented.")
+
+
+def extract_date_and_title(file_name: str) -> Tuple[str, str]:
+    match = re.match(r"^(\d{4}-\d{2}-\d{2})(.*)", file_name)
+    if not match:
+        return ("", file_name)
+    date = match[1]
+    title = match[2].lstrip("-_ ")
+    return (date, title)

@@ -191,6 +191,36 @@ def main():
             # Apply formatting only if sheet was populated with valid data
             google_api.apply_formatting_to_sheet(sheet_id)
 
+            # Delete existing summary file in Summary folder under top-level DJ_SETS_FOLDER_ID
+            try:
+                summary_folder_id = google_api.get_or_create_folder(
+                    config.DJ_SETS_FOLDER_ID, "Summary", drive
+                )
+                summary_query = f"name = '{year} Summary' and '{summary_folder_id}' in parents and trashed = false"
+                summary_resp = (
+                    drive.files()
+                    .list(
+                        q=summary_query,
+                        spaces="drive",
+                        fields="files(id, name)",
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                    )
+                    .execute()
+                )
+                summary_files = summary_resp.get("files", [])
+                for summary_file in summary_files:
+                    drive.files().delete(
+                        fileId=summary_file["id"], supportsAllDrives=True
+                    ).execute()
+                    config.logging.info(
+                        f"Deleted existing summary file '{summary_file.get('name')}' in Summary folder {summary_folder_id}"
+                    )
+            except Exception as summary_exc:
+                config.logging.error(
+                    f"Failed to check/delete existing summary file: {summary_exc}"
+                )
+
             # Move original file to Archive subfolder instead of deleting
             try:
                 archive_folder_id = google_api.get_or_create_folder(
