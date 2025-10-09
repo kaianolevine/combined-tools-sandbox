@@ -31,9 +31,9 @@ def test_hex_to_rgb_valid_and_invalid():
     rgb3 = helpers.hex_to_rgb("#fff")
     assert isinstance(rgb3, dict)
     rgb_bad = helpers.hex_to_rgb("bad")
-    assert abs(rgb_bad["red"] - 187/255) < 0.01
-    assert abs(rgb_bad["green"] - 170/255) < 0.01
-    assert abs(rgb_bad["blue"] - 221/255) < 0.01
+    assert abs(rgb_bad["red"] - 187 / 255) < 0.01
+    assert abs(rgb_bad["green"] - 170 / 255) < 0.01
+    assert abs(rgb_bad["blue"] - 221 / 255) < 0.01
 
 
 def test__try_and_release_folder_lock():

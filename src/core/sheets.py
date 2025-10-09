@@ -1,6 +1,7 @@
 from core import google_api
 from core import logger as log
 
+
 log = log.get_logger()
 
 
@@ -214,3 +215,99 @@ def delete_sheet_by_id(spreadsheet_id: str, sheet_id: int) -> None:
     request_body = {"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
     service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=request_body).execute()
     log.info(f"Sheet with ID={sheet_id} deleted successfully from spreadsheet ID={spreadsheet_id}")
+
+
+def update_row(spreadsheet_id: str, range_: str, values: list[list[str]]):
+    """
+    Update a specific row in a Google Sheet.
+
+    Args:
+        spreadsheet_id (str): The ID of the spreadsheet.
+        range_ (str): The A1-style range to update (e.g., "Processed!A2:C2").
+        values (list[list[str]]): 2D list of values to set in the range.
+
+    Example:
+        update_row(
+            "spreadsheet_id_here",
+            "Processed!A2:C2",
+            [["filename.m3u", "2025-10-09", "last_extvdj_line"]]
+        )
+    """
+    service = get_sheets_service()
+    body = {"values": values}
+    result = (
+        service.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=spreadsheet_id,
+            range=range_,
+            valueInputOption="USER_ENTERED",
+            body=body,
+        )
+        .execute()
+    )
+    return result
+
+
+def sort_sheet_by_column(
+    spreadsheet_id: str,
+    sheet_name: str,
+    column_index: int,
+    ascending: bool = True,
+    start_row: int = 2,
+    end_row: int = None,
+):
+    """
+    Sort a sheet by a specific column.
+
+    Args:
+        spreadsheet_id (str): The ID of the spreadsheet.
+        sheet_name (str): The name of the sheet tab.
+        column_index (int): The 0-based column index to sort by.
+        ascending (bool): Whether to sort ascending (True) or descending (False).
+        start_row (int): Row index (1-based in UI, 0-based in API) to start sorting.
+                         Default is 2 to skip header row.
+        end_row (int): Optional end row index (exclusive). If None, will sort until the last row.
+    """
+    log.debug(
+        f"sort_sheet_by_column called with spreadsheet_id={spreadsheet_id}, "
+        f"sheet_name={sheet_name}, column_index={column_index}, ascending={ascending}, "
+        f"start_row={start_row}, end_row={end_row}"
+    )
+    service = get_sheets_service()
+
+    # Get sheet ID from metadata
+    metadata = get_sheet_metadata(spreadsheet_id)
+    sheet_id = None
+    for sheet in metadata.get("sheets", []):
+        if sheet["properties"]["title"] == sheet_name:
+            sheet_id = sheet["properties"]["sheetId"]
+            break
+
+    if sheet_id is None:
+        raise ValueError(f"Sheet '{sheet_name}' not found in spreadsheet {spreadsheet_id}")
+
+    sort_spec = {
+        "dimensionIndex": column_index,
+        "sortOrder": "ASCENDING" if ascending else "DESCENDING",
+    }
+
+    sort_range = {
+        "sheetId": sheet_id,
+        "startRowIndex": start_row - 1,  # Convert to 0-based
+    }
+    if end_row is not None:
+        sort_range["endRowIndex"] = end_row
+
+    request_body = {"requests": [{"sortRange": {"range": sort_range, "sortSpecs": [sort_spec]}}]}
+
+    log.info(
+        f"Sorting sheet '{sheet_name}' on column {column_index} ({'ASC' if ascending else 'DESC'})"
+    )
+    result = (
+        service.spreadsheets()
+        .batchUpdate(spreadsheetId=spreadsheet_id, body=request_body)
+        .execute()
+    )
+    log.debug("Batch update executed")
+    return result

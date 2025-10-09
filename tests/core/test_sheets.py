@@ -1,5 +1,6 @@
 # tests/test_core_sheets.py
 
+import pytest
 from unittest import mock
 import core.sheets as sheets
 
@@ -128,3 +129,179 @@ def test_delete_sheet_by_id(monkeypatch):
     monkeypatch.setattr(sheets, "get_sheets_service", lambda: service)
     sheets.delete_sheet_by_id("ssid", 123)
     assert service.spreadsheets().batchUpdate.called
+
+
+def test_update_row_success(monkeypatch):
+    """It should call the Google Sheets API update method with correct params."""
+    fake_execute = mock.Mock(return_value={"updatedRows": 1})
+
+    class FakeUpdate:
+        def execute(self):
+            return fake_execute()
+
+    class FakeValues:
+        def update(self, **kwargs):
+            return FakeUpdate()
+
+    class FakeSpreadsheets:
+        def values(self):
+            return FakeValues()
+
+    class FakeService:
+        def spreadsheets(self):
+            return FakeSpreadsheets()
+
+    # Patch get_sheets_service() to return an object with spreadsheets()
+    fake_service = FakeService()
+    monkeypatch.setattr(sheets, "get_sheets_service", lambda: fake_service)
+
+    result = sheets.update_row(
+        "spreadsheet123",
+        "Processed!A2:C2",
+        [["file.m3u", "2025-10-09", "last_line"]],
+    )
+
+    # Check that the mocked execute was called
+    fake_execute.assert_called_once()
+    assert result == {"updatedRows": 1}
+
+
+def test_update_row_passes_correct_arguments(monkeypatch):
+    """It should pass the spreadsheetId, range, and values correctly."""
+    captured_args = {}
+
+    def fake_update(**kwargs):
+        captured_args.update(kwargs)
+        return mock.Mock(execute=lambda: {"ok": True})
+
+    class FakeValues:
+        def update(self, **kwargs):
+            return fake_update(**kwargs)
+
+    class FakeSpreadsheets:
+        def values(self):
+            return FakeValues()
+
+    class FakeService:
+        def spreadsheets(self):
+            return FakeSpreadsheets()
+
+    fake_service = FakeService()
+    monkeypatch.setattr(sheets, "get_sheets_service", lambda: fake_service)
+
+    values = [["file.m3u", "2025-10-09", "last_line"]]
+    sheets.update_row("spreadsheet123", "Processed!A2:C2", values)
+
+    assert captured_args["spreadsheetId"] == "spreadsheet123"
+    assert captured_args["range"] == "Processed!A2:C2"
+    assert captured_args["valueInputOption"] == "USER_ENTERED"
+    assert captured_args["body"] == {"values": values}
+
+
+def test_update_row_raises_http_error(monkeypatch):
+    """It should propagate exceptions if the API call fails."""
+
+    class FakeUpdate:
+        def execute(self):
+            raise sheets.HttpError(resp=mock.Mock(status=500), content=b"internal error")
+
+    class FakeValues:
+        def update(self, **kwargs):
+            return FakeUpdate()
+
+    class FakeSpreadsheets:
+        def values(self):
+            return FakeValues()
+
+    class FakeService:
+        def spreadsheets(self):
+            return FakeSpreadsheets()
+
+    fake_service = FakeService()
+    monkeypatch.setattr(sheets, "get_sheets_service", lambda: fake_service)
+
+    with pytest.raises(sheets.HttpError):
+        sheets.update_row("spreadsheet123", "Processed!A2:C2", [["bad"]])
+
+
+def test_sort_sheet_by_column_success(monkeypatch):
+    """It should build a correct batchUpdate request and execute it."""
+    # Setup to capture arguments
+    captured_args = {}
+
+    class FakeBatchUpdate:
+        def __init__(self, **kwargs):
+            captured_args.update(kwargs)
+
+        def execute(self):
+            return {"status": "ok"}
+
+    class FakeSpreadsheets:
+        def batchUpdate(self, **kwargs):
+            return FakeBatchUpdate(**kwargs)
+
+    class FakeService:
+        def spreadsheets(self):
+            return FakeSpreadsheets()
+
+    fake_service = FakeService()
+
+    # Patch helpers
+    monkeypatch.setattr(sheets, "get_sheets_service", lambda: fake_service)
+    monkeypatch.setattr(
+        sheets,
+        "get_sheet_metadata",
+        lambda ssid: {
+            "sheets": [
+                {"properties": {"title": "Data", "sheetId": 42}},
+                {"properties": {"title": "Other", "sheetId": 99}},
+            ]
+        },
+    )
+
+    result = sheets.sort_sheet_by_column("spreadsheet123", "Data", column_index=2, ascending=False)
+
+    assert captured_args["spreadsheetId"] == "spreadsheet123"
+    body = captured_args["body"]["requests"][0]["sortRange"]
+    assert body["range"]["sheetId"] == 42
+    assert body["sortSpecs"][0]["dimensionIndex"] == 2
+    assert body["sortSpecs"][0]["sortOrder"] == "DESCENDING"
+    assert result == {"status": "ok"}
+
+
+def test_sort_sheet_by_column_with_end_row(monkeypatch):
+    """It should include endRowIndex if provided."""
+    captured_body = {}
+
+    def fake_batch_update(**kwargs):
+        captured_body.update(kwargs)
+        return mock.Mock(execute=lambda: {"ok": True})
+
+    class FakeSpreadsheets:
+        def batchUpdate(self, **kwargs):
+            return fake_batch_update(**kwargs)
+
+    fake_service = mock.Mock(spreadsheets=lambda: FakeSpreadsheets())
+
+    monkeypatch.setattr(sheets, "get_sheets_service", lambda: fake_service)
+    monkeypatch.setattr(
+        sheets,
+        "get_sheet_metadata",
+        lambda ssid: {"sheets": [{"properties": {"title": "Data", "sheetId": 123}}]},
+    )
+
+    sheets.sort_sheet_by_column(
+        "spreadsheet123", "Data", column_index=0, ascending=True, end_row=100
+    )
+
+    sort_range = captured_body["body"]["requests"][0]["sortRange"]["range"]
+    assert sort_range["endRowIndex"] == 100
+
+
+def test_sort_sheet_by_column_sheet_not_found(monkeypatch):
+    """It should raise ValueError if sheet not found."""
+    monkeypatch.setattr(sheets, "get_sheets_service", lambda: mock.Mock())
+    monkeypatch.setattr(sheets, "get_sheet_metadata", lambda ssid: {"sheets": []})
+
+    with pytest.raises(ValueError):
+        sheets.sort_sheet_by_column("spreadsheet123", "Missing", column_index=0)
