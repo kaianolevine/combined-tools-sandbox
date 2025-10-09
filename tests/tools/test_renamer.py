@@ -74,7 +74,9 @@ def test_rename_files_in_directory(monkeypatch, tmp_path):
     monkeypatch.setattr(renamer, "sanitize_filename", lambda v: v)
     monkeypatch.setattr(os, "rename", lambda src, dst: None)
 
-    renamer.rename_files_in_directory(str(tmp_path), {"rename_order": ["bpm", "title", "artist"], "extension": ".mp3"})
+    renamer.rename_files_in_directory(
+        str(tmp_path), {"rename_order": ["bpm", "title", "artist"], "extension": ".mp3"}
+    )
 
 
 def test_rename_files_in_directory_skips_missing(monkeypatch, tmp_path):
@@ -85,4 +87,6 @@ def test_rename_files_in_directory_skips_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(renamer, "get_metadata", lambda f: metadata)
     monkeypatch.setattr(renamer, "generate_filename", lambda m, c: None)
 
-    renamer.rename_files_in_directory(str(tmp_path), {"rename_order": ["title"], "extension": ".mp3"})
+    renamer.rename_files_in_directory(
+        str(tmp_path), {"rename_order": ["title"], "extension": ".mp3"}
+    )

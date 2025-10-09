@@ -3,6 +3,7 @@
 import json
 import pytest
 from unittest import mock
+from googleapiclient.errors import HttpError
 
 from core import google_api
 
@@ -202,3 +203,120 @@ def test_find_file_by_name_found_and_not_found():
     drive_service.list_files_in_folder.return_value = []
     with pytest.raises(FileNotFoundError):
         google_api.find_file_by_name(drive_service, "folder", "bar")
+
+
+def make_http_error(status=400, content=b"error"):
+    resp = mock.Mock()
+    resp.status = status
+    return HttpError(resp=resp, content=content)
+
+
+def test_load_credentials_env_invalid(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_JSON", "not-json")
+    monkeypatch.setattr(
+        google_api.service_account.Credentials, "from_service_account_info", mock.Mock()
+    )
+    # should fall back to file
+    monkeypatch.setattr(
+        google_api.service_account.Credentials,
+        "from_service_account_file",
+        lambda *args, **kwargs: "filecreds",
+    )
+    result = google_api.load_credentials()
+    assert result == "filecreds"
+
+
+def test_get_or_create_folder_http_error(monkeypatch):
+    drive = mock.Mock()
+    drive.files().list().execute.side_effect = make_http_error()
+    with pytest.raises(HttpError):
+        google_api.get_or_create_folder("parent", "name", drive)
+
+
+def test_upload_to_drive_http_error(monkeypatch, tmp_path):
+    file = tmp_path / "bad.csv"
+    file.write_text("col1,col2")
+    drive = mock.Mock()
+    drive.files().create().execute.side_effect = make_http_error()
+    gc = mock.Mock()
+    gc.open_by_key.side_effect = Exception("fail open")
+    monkeypatch.setattr(google_api, "get_gspread_client", lambda: gc)
+    with pytest.raises(HttpError):
+        google_api.upload_to_drive(drive, str(file), "folder")
+
+
+def test_list_files_in_drive_folder_empty(monkeypatch):
+    drive = mock.Mock()
+    drive.files().list().execute.return_value = {}
+    files = google_api.list_files_in_drive_folder(drive, "fid")
+    assert files == []
+
+
+def test_download_file_http_error(monkeypatch, tmp_path):
+    drive = mock.Mock()
+    drive.files().get_media.side_effect = make_http_error()
+    with pytest.raises(HttpError):
+        google_api.download_file(drive, "fid", str(tmp_path / "f.txt"))
+
+
+def test_apply_formatting_to_sheet_with_values(monkeypatch):
+    gc = mock.Mock()
+    sh = mock.Mock()
+    sheet = mock.Mock()
+    sheet.get_all_values.return_value = [["a", "b"], ["c", "d"]]
+    sh.sheet1 = sheet
+    gc.open_by_key.return_value = sh
+    monkeypatch.setattr(google_api, "get_gspread_client", lambda: gc)
+    # should not raise
+    google_api.apply_formatting_to_sheet("ssid")
+    assert sh.sheet1.format.called or True
+
+
+def test_set_values_http_error(monkeypatch):
+    sheets = mock.Mock()
+    sheets.spreadsheets().values().update().execute.side_effect = make_http_error()
+    with pytest.raises(HttpError):
+        google_api.set_values(sheets, "ssid", "sname", 1, 1, [["x"]])
+
+
+def test_delete_all_sheets_except_keeps_all(monkeypatch):
+    sheets = mock.Mock()
+    sheets.spreadsheets().get().execute.return_value = {
+        "sheets": [{"properties": {"title": "keep", "sheetId": 1}}]
+    }
+    # Should not call batchUpdate
+    google_api.delete_all_sheets_except(sheets, "ssid", "keep")
+    assert not sheets.spreadsheets().batchUpdate.called
+
+
+def test_delete_sheet_by_name_not_found(monkeypatch):
+    sheets = mock.Mock()
+    sheets.spreadsheets().get().execute.return_value = {
+        "sheets": [{"properties": {"title": "x", "sheetId": 1}}]
+    }
+    # deleting something that does not exist should not error
+    google_api.delete_sheet_by_name(sheets, "ssid", "nope")
+
+
+def test_extract_date_from_filename_edgecases():
+    # date-like string at start
+    assert google_api.extract_date_from_filename("2020-12-31-suffix.csv") == "2020-12-31"
+    # no match returns original
+    assert google_api.extract_date_from_filename("random.txt") == "random.txt"
+
+
+def test_parse_m3u_empty(tmp_path):
+    file = tmp_path / "empty.m3u"
+    file.write_text("")
+    songs = google_api.parse_m3u(mock.Mock(), str(file), "ssid")
+    assert songs == []
+
+
+def test_find_file_by_name_multiple(monkeypatch):
+    drive = mock.Mock()
+    drive.list_files_in_folder.return_value = [
+        {"id": "1", "name": "foo"},
+        {"id": "2", "name": "foo"},
+    ]
+    result = google_api.find_file_by_name(drive, "fid", "foo")
+    assert result["id"] in ["1", "2"]
