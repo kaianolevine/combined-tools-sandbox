@@ -3,6 +3,7 @@
 import pytest
 from unittest import mock
 import core.sheets as sheets
+from googleapiclient.errors import HttpError
 
 
 def test_get_sheets_service(monkeypatch):
@@ -203,7 +204,7 @@ def test_update_row_raises_http_error(monkeypatch):
 
     class FakeUpdate:
         def execute(self):
-            raise sheets.HttpError(resp=mock.Mock(status=500), content=b"internal error")
+            raise HttpError(resp=mock.Mock(status=500), content=b"internal error")
 
     class FakeValues:
         def update(self, **kwargs):
@@ -220,7 +221,7 @@ def test_update_row_raises_http_error(monkeypatch):
     fake_service = FakeService()
     monkeypatch.setattr(sheets, "get_sheets_service", lambda: fake_service)
 
-    with pytest.raises(sheets.HttpError):
+    with pytest.raises(HttpError):
         sheets.update_row("spreadsheet123", "Processed!A2:C2", [["bad"]])
 
 
