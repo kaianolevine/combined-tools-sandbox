@@ -2,46 +2,39 @@
 sync.py — Main integration script for Westie Radio automation.
 """
 
-from core import spotify, drive, sheets
+from core import spotify, drive, sheets, google_api
 from tools.westie_radio import config
 from googleapiclient.errors import HttpError
+from core import logger as log
+
+log = log.get_logger()
 
 spreadsheet_id = config.SPREADSHEET_ID
 
 
-def extract_date_from_filename(filename):
-    import re
+def initialize_spreadsheet():
+    """Ensure necessary sheets exist and remove default 'Sheet1' if present."""
 
-    match = re.match(r"(\d{4}-\d{2}-\d{2})", filename)
-    return match.group(1) if match else filename
+    # Ensure necessary sheets
+    sheets.ensure_sheet_exists(
+        spreadsheet_id, "Processed", headers=["Filename", "Date", "ExtVDJLine"]
+    )
+    sheets.ensure_sheet_exists(spreadsheet_id, "Songs Added", headers=["Date", "Title", "Artist"])
+    sheets.ensure_sheet_exists(
+        spreadsheet_id, "Songs Not Found", headers=["Date", "Title", "Artist"]
+    )
 
-
-def parse_m3u(filepath):
-    """Parses .m3u file and returns a list of (artist, title, extvdj_line) tuples."""
-    import re
-
-    songs = []
-    sheets.log_debug(spreadsheet_id, f"Opening M3U file: {filepath}")
-    with open(filepath, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-        sheets.log_debug(spreadsheet_id, f"Read {len(lines)} lines from {filepath}")
-        for line in lines:
-            line = line.strip()
-            # sheets.log_debug(spreadsheet_id, f"Stripped line: {line}")
-            if line.startswith("#EXTVDJ:"):
-                artist_match = re.search(r"<artist>(.*?)</artist>", line)
-                title_match = re.search(r"<title>(.*?)</title>", line)
-                if artist_match and title_match:
-                    artist = artist_match.group(1).strip()
-                    title = title_match.group(1).strip()
-                    songs.append((artist, title, line))
-            #        sheets.log_debug(spreadsheet_id, f"Parsed song - Artist: '{artist}', Title: '{title}'")
-            #    else:
-            #        sheets.log_debug(spreadsheet_id, f"Missing artist or title in line: {line}")
-            # else:
-            #    sheets.log_debug(spreadsheet_id, f"Ignored line: {line}")
-    sheets.log_debug(spreadsheet_id, f"Total parsed songs: {len(songs)}")
-    return songs
+    # Attempt to delete 'Sheet1' if it exists
+    try:
+        metadata = sheets.get_sheet_metadata(spreadsheet_id)
+        for sheet_info in metadata.get("sheets", []):
+            title = sheet_info.get("properties", {}).get("title", "")
+            sheet_id = sheet_info.get("properties", {}).get("sheetId", None)
+            if title == "Sheet1" and sheet_id is not None:
+                sheets.delete_sheet_by_id(spreadsheet_id, sheet_id)
+                sheets.log_debug(spreadsheet_id, "🗑 Deleted default 'Sheet1'.")
+    except HttpError as e:
+        sheets.log_debug(spreadsheet_id, f"⚠️ Failed to delete 'Sheet1': {e}")
 
 
 def main():
@@ -78,11 +71,11 @@ def main():
     for file in m3u_files:
         filename = file["name"]
         file_id = file["id"]
-        date = extract_date_from_filename(filename)
+        date = google_api.extract_date_from_filename(filename)
         sheets.log_info(spreadsheet_id, f"🎶 Processing file: {filename}")
 
         drive.download_file(file_id, filename)
-        songs = parse_m3u(filename)
+        songs = google_api.parse_m3u(sheets, filename, spreadsheet_id)
 
         last_extvdj_line = processed_map.get(filename)
         new_songs = songs
@@ -186,39 +179,6 @@ def main():
             sheets.log_debug(spreadsheet_id, f"Failed to update Processed log: {e}")
 
     sheets.log_info(spreadsheet_id, "✅ Sync complete.")
-
-
-def find_file_by_name(folder_id, target_name):
-    files = drive.list_files_in_folder(folder_id)
-    for f in files:
-        if f["name"] == target_name:
-            return f
-    raise FileNotFoundError(f"File named {target_name} not found in folder {folder_id}")
-
-
-def initialize_spreadsheet():
-    """Ensure necessary sheets exist and remove default 'Sheet1' if present."""
-
-    # Ensure necessary sheets
-    sheets.ensure_sheet_exists(
-        spreadsheet_id, "Processed", headers=["Filename", "Date", "ExtVDJLine"]
-    )
-    sheets.ensure_sheet_exists(spreadsheet_id, "Songs Added", headers=["Date", "Title", "Artist"])
-    sheets.ensure_sheet_exists(
-        spreadsheet_id, "Songs Not Found", headers=["Date", "Title", "Artist"]
-    )
-
-    # Attempt to delete 'Sheet1' if it exists
-    try:
-        metadata = sheets.get_sheet_metadata(spreadsheet_id)
-        for sheet_info in metadata.get("sheets", []):
-            title = sheet_info.get("properties", {}).get("title", "")
-            sheet_id = sheet_info.get("properties", {}).get("sheetId", None)
-            if title == "Sheet1" and sheet_id is not None:
-                sheets.delete_sheet_by_id(spreadsheet_id, sheet_id)
-                sheets.log_debug(spreadsheet_id, "🗑 Deleted default 'Sheet1'.")
-    except HttpError as e:
-        sheets.log_debug(spreadsheet_id, f"⚠️ Failed to delete 'Sheet1': {e}")
 
 
 if __name__ == "__main__":

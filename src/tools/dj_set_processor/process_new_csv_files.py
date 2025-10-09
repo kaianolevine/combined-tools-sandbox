@@ -2,7 +2,10 @@ import os
 import re
 
 import tools.dj_set_processor.config as config
-import tools.dj_set_processor.google_api as google_api
+import core.google_api as google_api
+from core import logger as log
+
+log = log.get_logger()
 
 
 def extract_year_from_filename(filename):

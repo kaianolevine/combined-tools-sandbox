@@ -1,9 +1,9 @@
-import logging
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth, CacheHandler
 from tools.westie_radio import config
+from core import logger as log
 
-logger = logging.getLogger(__name__)
+log = log.get_logger()
 
 
 class NoopCacheHandler(CacheHandler):
@@ -15,7 +15,7 @@ class NoopCacheHandler(CacheHandler):
 
 
 def get_spotify_client_from_refresh() -> Spotify:
-    logger.debug("🔐 Loading Spotify credentials from environment variables...")
+    log.debug("🔐 Loading Spotify credentials from environment variables...")
 
     client_id = config.SPOTIFY_CLIENT_ID
     client_secret = config.SPOTIFY_CLIENT_SECRET
@@ -25,7 +25,7 @@ def get_spotify_client_from_refresh() -> Spotify:
     if not all([client_id, client_secret, redirect_uri, refresh_token]):
         raise ValueError("Missing one or more required Spotify credentials.")
 
-    logger.debug("✅ All Spotify environment variables found. Initializing client...")
+    log.debug("✅ All Spotify environment variables found. Initializing client...")
 
     auth_manager = SpotifyOAuth(
         client_id=client_id,
@@ -40,17 +40,17 @@ def get_spotify_client_from_refresh() -> Spotify:
 
 
 def search_track(artist, title):
-    logger.debug(f"🔍 Searching for track: Artist='{artist}', Title='{title}'")
+    log.debug(f"🔍 Searching for track: Artist='{artist}', Title='{title}'")
     sp = get_spotify_client_from_refresh()
     query = f"artist:{artist} track:{title}"
     results = sp.search(q=query, type="track", limit=1)
 
     tracks = results.get("tracks", {}).get("items", [])
     if tracks:
-        logger.debug(f"✅ Found track URI: {tracks[0]['uri']}")
+        log.debug(f"✅ Found track URI: {tracks[0]['uri']}")
         return tracks[0]["uri"]
     else:
-        logger.debug("❌ No track found")
+        log.debug("❌ No track found")
         return None
 
 

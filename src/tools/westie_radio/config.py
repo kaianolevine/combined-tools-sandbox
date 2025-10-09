@@ -17,12 +17,3 @@ RANGE_NAME = os.getenv("RANGE_NAME", "Sheet1!A1")
 LOG_SHEET_NAME = os.getenv("LOG_SHEET_NAME", "Westie Radio Log")
 M3U_FOLDER_ID = os.getenv("M3U_FOLDER_ID")
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
-
-GOOGLE_APPLICATION_CREDENTIALS = os.getenv(
-    "GOOGLE_APPLICATION_CREDENTIALS", os.path.join(os.getcwd(), "credentials.json")
-)
-
-SCOPES = [
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/spreadsheets",
-]

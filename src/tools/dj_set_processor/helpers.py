@@ -3,11 +3,14 @@
 import time
 import re
 
-import tools.dj_set_processor.google_api as google_api
+import core.google_api as google_api
 import tools.dj_set_processor.config as config
 from difflib import SequenceMatcher
 from typing import Tuple
 from googleapiclient.errors import HttpError
+from core import logger as log
+
+log = log.get_logger()
 
 # Constants
 DJ_SETS = "11zVwUZLDfB6uXpwNdA3c4Xsev2aG26fc"  # My Drive/Deejay Marvel/DJ Sets

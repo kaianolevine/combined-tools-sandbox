@@ -2,13 +2,15 @@ import io
 import os
 import json
 import gspread
-import tools.dj_set_processor.config as config
 from typing import Any, List, Dict
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
 import tools.dj_set_processor.helpers as helpers
+from core import logger as log
+
+log = log.get_logger()
 
 FOLDER_CACHE = {}
 
@@ -97,7 +99,7 @@ def get_or_create_folder(parent_folder_id: str, name: str, drive_service) -> str
 
 
 def upload_to_drive(drive, filepath, parent_id):
-    config.logging.debug(f"Uploading file '{filepath}' to Drive folder ID '{parent_id}'")
+    log.debug(f"Uploading file '{filepath}' to Drive folder ID '{parent_id}'")
     file_metadata = {
         "name": os.path.basename(filepath),
         "parents": [parent_id],
@@ -109,8 +111,8 @@ def upload_to_drive(drive, filepath, parent_id):
         .create(body=file_metadata, media_body=media, fields="id", supportsAllDrives=True)
         .execute()
     )
-    config.logging.info(f"📄 Uploaded to Drive as Google Sheet: {filepath}")
-    config.logging.debug(f"Uploaded file ID: {uploaded['id']}")
+    log.info(f"📄 Uploaded to Drive as Google Sheet: {filepath}")
+    log.debug(f"Uploaded file ID: {uploaded['id']}")
 
     # After uploading, use gspread to open the sheet and check for 'sep=' in first row of all worksheets
     gc = get_gspread_client()
@@ -124,7 +126,7 @@ def upload_to_drive(drive, filepath, parent_id):
 
 
 def list_files_in_drive_folder(drive, folder_id):
-    config.logging.debug(f"Listing files in Drive folder ID: {folder_id}")
+    log.debug(f"Listing files in Drive folder ID: {folder_id}")
     query = f"'{folder_id}' in parents and trashed = false"
     files = []
     page_token = None
@@ -145,12 +147,12 @@ def list_files_in_drive_folder(drive, folder_id):
         page_token = response.get("nextPageToken", None)
         if page_token is None:
             break
-    config.logging.debug(f"Found {len(files)} files in folder ID: {folder_id}")
+    log.debug(f"Found {len(files)} files in folder ID: {folder_id}")
     return files
 
 
 def download_file(drive, file_id, destination_path):
-    config.logging.debug(f"Downloading file ID '{file_id}' to '{destination_path}'")
+    log.debug(f"Downloading file ID '{file_id}' to '{destination_path}'")
     request = drive.files().get_media(fileId=file_id, supportsAllDrives=True)
     fh = io.FileIO(destination_path, "wb")
     downloader = MediaIoBaseDownload(fh, request)
@@ -158,7 +160,7 @@ def download_file(drive, file_id, destination_path):
     while not done:
         status, done = downloader.next_chunk()
     fh.close()
-    config.logging.info(f"⬇️ Downloaded file to {destination_path}")
+    log.info(f"⬇️ Downloaded file to {destination_path}")
 
 
 def apply_sheet_formatting(sheet):
@@ -191,24 +193,24 @@ def apply_sheet_formatting(sheet):
 
 
 def apply_formatting_to_sheet(spreadsheet_id):
-    config.logging.debug(f"Applying formatting to spreadsheet ID: {spreadsheet_id}")
+    log.debug(f"Applying formatting to spreadsheet ID: {spreadsheet_id}")
     try:
         gc = get_gspread_client()
         sh = gc.open_by_key(spreadsheet_id)
         sheet = sh.sheet1
-        config.logging.debug("Opened sheet for formatting")
+        log.debug("Opened sheet for formatting")
 
         # Get all values to determine range size
         values = sheet.get_all_values()
         if not values or len(values) == 0 or len(values[0]) == 0:
-            config.logging.warning("Sheet is empty, skipping formatting")
+            log.warning("Sheet is empty, skipping formatting")
             return
 
         apply_sheet_formatting(sheet)
 
-        config.logging.info("✅ Formatting applied successfully")
+        log.info("✅ Formatting applied successfully")
     except Exception as e:
-        config.logging.error(f"Error applying formatting: {e}")
+        log.error(f"Error applying formatting: {e}")
 
 
 def get_or_create_subfolder(drive_service, parent_folder_id, subfolder_name):
@@ -273,7 +275,7 @@ def create_spreadsheet(
     This function supports Shared Drives (supportsAllDrives=True).
     Returns the file ID.
     """
-    config.logger.info(
+    log.info(
         f"🔍 Searching for file '{name}' in folder ID {parent_folder_id} (shared drives enabled)"
     )
     try:
@@ -291,10 +293,10 @@ def create_spreadsheet(
         )
         files = response.get("files", [])
         if files:
-            config.logger.info(f"📄 Found existing file '{name}' with ID {files[0]['id']}")
+            log.info(f"📄 Found existing file '{name}' with ID {files[0]['id']}")
             return files[0]["id"]
         else:
-            config.logger.info(
+            log.info(
                 f"➕ No existing file named '{name}' — creating new one in parent {parent_folder_id}"
             )
             file_metadata = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
@@ -303,10 +305,10 @@ def create_spreadsheet(
                 .create(body=file_metadata, fields="id", supportsAllDrives=True)
                 .execute()
             )
-            config.logger.info(f"🆕 Created new file '{name}' with ID {file['id']}")
+            log.info(f"🆕 Created new file '{name}' with ID {file['id']}")
             return file["id"]
     except HttpError as error:
-        config.logger.error(f"An error occurred while finding or creating file: {error}")
+        log.error(f"An error occurred while finding or creating file: {error}")
         raise
 
 
@@ -698,9 +700,7 @@ def clear_all_except_one_sheet(sheets_service, spreadsheet_id: str, sheet_to_kee
     Deletes all sheets in the spreadsheet except the one specified.
     If the sheet_to_keep does not exist, creates it.
     """
-    config.logger.info(
-        f"🧹 Clearing all sheets except '{sheet_to_keep}' in spreadsheet ID {spreadsheet_id}"
-    )
+    log.info(f"🧹 Clearing all sheets except '{sheet_to_keep}' in spreadsheet ID {spreadsheet_id}")
     try:
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         sheets = spreadsheet.get("sheets", [])
@@ -708,25 +708,25 @@ def clear_all_except_one_sheet(sheets_service, spreadsheet_id: str, sheet_to_kee
         requests = []
         # Create the sheet_to_keep if it does not exist
         if sheet_to_keep not in sheet_titles:
-            config.logger.info(f"➕ Sheet '{sheet_to_keep}' not found, queuing create request")
+            log.info(f"➕ Sheet '{sheet_to_keep}' not found, queuing create request")
             requests.append({"addSheet": {"properties": {"title": sheet_to_keep}}})
         # Delete all sheets except sheet_to_keep
         for sheet in sheets:
             title = sheet["properties"]["title"]
             sheet_id = sheet["properties"]["sheetId"]
             if title != sheet_to_keep:
-                config.logger.info(f"❌ Queuing deletion of sheet '{title}' (id {sheet_id})")
+                log.info(f"❌ Queuing deletion of sheet '{title}' (id {sheet_id})")
                 requests.append({"deleteSheet": {"sheetId": sheet_id}})
         if requests:
             body = {"requests": requests}
             sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id, body=body
             ).execute()
-            config.logger.info("✅ Sheets updated successfully (clear/create/delete performed)")
+            log.info("✅ Sheets updated successfully (clear/create/delete performed)")
         else:
-            config.logger.info("ℹ️ No sheet changes required")
+            log.info("ℹ️ No sheet changes required")
     except HttpError as error:
-        config.logger.error(f"An error occurred while clearing sheets: {error}")
+        log.error(f"An error occurred while clearing sheets: {error}")
         raise
 
 
@@ -735,7 +735,7 @@ def get_all_subfolders(drive_service, parent_folder_id: str) -> List[Dict]:
     Returns a list of all subfolders in the specified parent folder.
     Supports Shared Drives.
     """
-    config.logger.info(
+    log.info(
         f"📂 Retrieving all subfolders in folder ID {parent_folder_id} (shared drives enabled)"
     )
     try:
@@ -759,10 +759,10 @@ def get_all_subfolders(drive_service, parent_folder_id: str) -> List[Dict]:
             page_token = response.get("nextPageToken", None)
             if page_token is None:
                 break
-        config.logger.info(f"📂 Found {len(folders)} subfolders under {parent_folder_id}")
+        log.info(f"📂 Found {len(folders)} subfolders under {parent_folder_id}")
         return folders
     except HttpError as error:
-        config.logger.error(f"An error occurred while retrieving subfolders: {error}")
+        log.error(f"An error occurred while retrieving subfolders: {error}")
         raise
 
 
@@ -796,7 +796,7 @@ def insert_rows(sheets_service, spreadsheet_id: str, sheet_name: str, values: Li
     Inserts rows into the specified sheet (overwrites the range starting at A1).
     Uses USER_ENTERED so formulas like HYPERLINK() are written as formulas.
     """
-    config.logger.info(
+    log.info(
         f"➕ Inserting {len(values)} rows into sheet '{sheet_name}' in spreadsheet {spreadsheet_id}"
     )
     try:
@@ -805,9 +805,9 @@ def insert_rows(sheets_service, spreadsheet_id: str, sheet_name: str, values: Li
         sheets_service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id, range=range_, valueInputOption="USER_ENTERED", body=body
         ).execute()
-        config.logger.info("✅ Rows inserted successfully")
+        log.info("✅ Rows inserted successfully")
     except HttpError as error:
-        config.logger.error(f"An error occurred while inserting rows: {error}")
+        log.error(f"An error occurred while inserting rows: {error}")
         raise
 
 
@@ -815,9 +815,7 @@ def set_column_formatting(sheets_service, spreadsheet_id: str, sheet_name: str, 
     """
     Sets formatting for specified columns (first column date, others text).
     """
-    config.logger.info(
-        f"🎨 Setting column formatting for {num_columns} columns in sheet '{sheet_name}'"
-    )
+    log.info(f"🎨 Setting column formatting for {num_columns} columns in sheet '{sheet_name}'")
     try:
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         sheet_id = None
@@ -826,7 +824,7 @@ def set_column_formatting(sheets_service, spreadsheet_id: str, sheet_name: str, 
                 sheet_id = sheet["properties"]["sheetId"]
                 break
         if sheet_id is None:
-            config.logger.warning(f"Sheet '{sheet_name}' not found for formatting")
+            log.warning(f"Sheet '{sheet_name}' not found for formatting")
             return
 
         requests = []
@@ -874,9 +872,9 @@ def set_column_formatting(sheets_service, spreadsheet_id: str, sheet_name: str, 
             sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id, body=body
             ).execute()
-            config.logger.info("✅ Column formatting set successfully")
+            log.info("✅ Column formatting set successfully")
     except HttpError as error:
-        config.logger.error(f"An error occurred while setting column formatting: {error}")
+        log.error(f"An error occurred while setting column formatting: {error}")
         raise
 
 
@@ -884,14 +882,12 @@ def delete_sheet_by_name(sheets_service, spreadsheet_id: str, sheet_name: str):
     """
     Deletes a sheet by its name from the spreadsheet.
     """
-    config.logger.info(f"🗑️ Deleting sheet '{sheet_name}' if it exists")
+    log.info(f"🗑️ Deleting sheet '{sheet_name}' if it exists")
     try:
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         sheets = spreadsheet.get("sheets", [])
         if len(sheets) <= 1:
-            config.logger.warning(
-                f"Not deleting sheet '{sheet_name}': spreadsheet only has one sheet."
-            )
+            log.warning(f"Not deleting sheet '{sheet_name}': spreadsheet only has one sheet.")
             return
         sheet_id = None
         for sheet in sheets:
@@ -903,11 +899,11 @@ def delete_sheet_by_name(sheets_service, spreadsheet_id: str, sheet_name: str):
             sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id, body=body
             ).execute()
-            config.logger.info(f"✅ Sheet '{sheet_name}' deleted successfully")
+            log.info(f"✅ Sheet '{sheet_name}' deleted successfully")
         else:
-            config.logger.info(f"Sheet '{sheet_name}' not found; no deletion necessary")
+            log.info(f"Sheet '{sheet_name}' not found; no deletion necessary")
     except HttpError as error:
-        config.logger.error(f"An error occurred while deleting sheet: {error}")
+        log.error(f"An error occurred while deleting sheet: {error}")
         raise
 
 
@@ -915,12 +911,12 @@ def get_spreadsheet_metadata(sheets_service, spreadsheet_id: str) -> Dict:
     """
     Retrieves the metadata of the spreadsheet, including sheets info.
     """
-    config.logger.info(f"🔍 Retrieving spreadsheet metadata for ID {spreadsheet_id}")
+    log.info(f"🔍 Retrieving spreadsheet metadata for ID {spreadsheet_id}")
     try:
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         return spreadsheet
     except HttpError as error:
-        config.logger.error(f"An error occurred while retrieving spreadsheet metadata: {error}")
+        log.error(f"An error occurred while retrieving spreadsheet metadata: {error}")
         raise
 
 
@@ -934,7 +930,7 @@ def reorder_sheets(
     Reorders sheets in the spreadsheet to match the order of sheet_names_in_order.
     Sheets not in the list will be placed after those specified.
     """
-    config.logger.info(
+    log.info(
         f"🔀 Reordering sheets in spreadsheet ID {spreadsheet_id} to order: {sheet_names_in_order}"
     )
     try:
@@ -974,9 +970,9 @@ def reorder_sheets(
             sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id, body=body
             ).execute()
-            config.logger.info("✅ Sheets reordered successfully")
+            log.info("✅ Sheets reordered successfully")
     except HttpError as error:
-        config.logger.error(f"An error occurred while reordering sheets: {error}")
+        log.error(f"An error occurred while reordering sheets: {error}")
         raise
 
 
@@ -991,7 +987,7 @@ def find_or_create_file_by_name(
     This function supports Shared Drives (supportsAllDrives=True).
     Returns the file ID.
     """
-    config.logger.info(
+    log.info(
         f"🔍 Searching for file '{name}' in folder ID {parent_folder_id} (shared drives enabled)"
     )
     try:
@@ -1009,10 +1005,10 @@ def find_or_create_file_by_name(
         )
         files = response.get("files", [])
         if files:
-            config.logger.info(f"📄 Found existing file '{name}' with ID {files[0]['id']}")
+            log.info(f"📄 Found existing file '{name}' with ID {files[0]['id']}")
             return files[0]["id"]
         else:
-            config.logger.info(
+            log.info(
                 f"➕ No existing file named '{name}' — creating new one in parent {parent_folder_id}"
             )
             file_metadata = {"name": name, "mimeType": mime_type, "parents": [parent_folder_id]}
@@ -1021,10 +1017,10 @@ def find_or_create_file_by_name(
                 .create(body=file_metadata, fields="id", supportsAllDrives=True)
                 .execute()
             )
-            config.logger.info(f"🆕 Created new file '{name}' with ID {file['id']}")
+            log.info(f"🆕 Created new file '{name}' with ID {file['id']}")
             return file["id"]
     except HttpError as error:
-        config.logger.error(f"An error occurred while finding or creating file: {error}")
+        log.error(f"An error occurred while finding or creating file: {error}")
         raise
 
 
@@ -1196,3 +1192,46 @@ def rename_sheet(sheets_service, spreadsheet_id, sheet_id, new_title):
         ]
     }
     sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+
+
+def extract_date_from_filename(filename):
+    import re
+
+    match = re.match(r"(\d{4}-\d{2}-\d{2})", filename)
+    return match.group(1) if match else filename
+
+
+def parse_m3u(sheets_service, filepath, spreadsheet_id):
+    """Parses .m3u file and returns a list of (artist, title, extvdj_line) tuples."""
+    import re
+
+    songs = []
+    sheets_service.log_debug(spreadsheet_id, f"Opening M3U file: {filepath}")
+    with open(filepath, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+        sheets_service.log_debug(spreadsheet_id, f"Read {len(lines)} lines from {filepath}")
+        for line in lines:
+            line = line.strip()
+            # sheets.log_debug(spreadsheet_id, f"Stripped line: {line}")
+            if line.startswith("#EXTVDJ:"):
+                artist_match = re.search(r"<artist>(.*?)</artist>", line)
+                title_match = re.search(r"<title>(.*?)</title>", line)
+                if artist_match and title_match:
+                    artist = artist_match.group(1).strip()
+                    title = title_match.group(1).strip()
+                    songs.append((artist, title, line))
+            #        sheets.log_debug(spreadsheet_id, f"Parsed song - Artist: '{artist}', Title: '{title}'")
+            #    else:
+            #        sheets.log_debug(spreadsheet_id, f"Missing artist or title in line: {line}")
+            # else:
+            #    sheets.log_debug(spreadsheet_id, f"Ignored line: {line}")
+    sheets_service.log_debug(spreadsheet_id, f"Total parsed songs: {len(songs)}")
+    return songs
+
+
+def find_file_by_name(drive_service, folder_id, target_name):
+    files = drive_service.list_files_in_folder(folder_id)
+    for f in files:
+        if f["name"] == target_name:
+            return f
+    raise FileNotFoundError(f"File named {target_name} not found in folder {folder_id}")
