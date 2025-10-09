@@ -172,9 +172,7 @@ def main():
                     ).execute()
                     log.info(f"✏️ Renamed original to '{new_name}'")
                 except Exception as rename_exc:
-                    log.error(
-                        f"Failed to rename original to possible_duplicate_: {rename_exc}"
-                    )
+                    log.error(f"Failed to rename original to possible_duplicate_: {rename_exc}")
                 # cleanup temp and skip
                 if os.path.exists(temp_path):
                     try:
@@ -220,9 +218,7 @@ def main():
                         f"Deleted existing summary file '{summary_file.get('name')}' in Summary folder {summary_folder_id}"
                     )
             except Exception as summary_exc:
-                log.error(
-                    f"Failed to check/delete existing summary file: {summary_exc}"
-                )
+                log.error(f"Failed to check/delete existing summary file: {summary_exc}")
 
             # Move original file to Archive subfolder instead of deleting
             try:
@@ -237,9 +233,7 @@ def main():
                 ).execute()
                 log.info(f"📦 Moved original file to Archive subfolder: {filename}")
             except Exception as move_exc:
-                log.error(
-                    f"Failed to move original file to Archive subfolder: {move_exc}"
-                )
+                log.error(f"Failed to move original file to Archive subfolder: {move_exc}")
 
             # drive.files().delete(fileId=file_id, supportsAllDrives=True).execute()
             # log.info(f"🗑️ Deleted original file from Drive: {filename}")
