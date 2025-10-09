@@ -125,5 +125,4 @@ def generate_dj_set_collection():
 
 
 if __name__ == "__main__":
-    config.logging.basicConfig(level=config.logging.INFO)
     generate_dj_set_collection()

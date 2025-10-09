@@ -119,7 +119,7 @@ def generate_summary_for_folder(
             continue
 
     if not sheet_data:
-        config.logging.info(f"📭 No valid data found in folder: {year}")
+        log.info(f"📭 No valid data found in folder: {year}")
         return
 
     final_header = list(all_headers) + ["Count"]
@@ -211,7 +211,7 @@ def generate_summary_for_folder(
 
     log.debug(f"Moving spreadsheet {ss_id} to folder {summary_folder_id}")
     # google_api.move_file_to_folder(drive_service, ss_id, summary_folder_id)
-    config.logging.info(f"✅ Summary successfully created: {summary_name}")
+    log.info(f"✅ Summary successfully created: {summary_name}")
 
 
 def generate_complete_summary():

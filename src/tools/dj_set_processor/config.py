@@ -10,3 +10,11 @@ SUMMARY_TAB_NAME = "Summary_Tab"
 LOCK_FILE_NAME = ".lock_summary_folder"
 TEMP_TAB_NAME = "TempClear"
 OUTPUT_NAME = "DJ Set Collection"
+
+
+# Constants
+DJ_SETS = "11zVwUZLDfB6uXpwNdA3c4Xsev2aG26fc"  # My Drive/Deejay Marvel/DJ Sets
+CSV_FILES = "1YskZ8sD2H0bA9rxzWnE8iV15P7kWRk8N"  # My Drive/Deejay Marvel/CSV-Uploaded
+ARCHIVE_FOLDER_NAME = "csvs"
+MAX_FILES = 20
+desiredOrder = ["Title", "Remix", "Artist", "Comment", "Genre", "Year", "BPM", "Length"]
