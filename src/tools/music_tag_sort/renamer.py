@@ -11,10 +11,8 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %
 
 
 def new_sanitize_filename(value):
-    value = re.sub(r"[\(\[]", "_", value)
-    value = re.sub(r"[\)\]]", "", value)
-    value = re.sub(r"\s+", "", value)
-    value = re.sub(r"[^a-zA-Z0-9_]", "", value)
+    # Replace any non-alphanumeric or underscore character with underscore
+    value = re.sub(r"[^a-zA-Z0-9_]", "_", value)
     return value
 
 
