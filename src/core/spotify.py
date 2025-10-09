@@ -23,17 +23,23 @@ def get_spotify_client_from_refresh() -> Spotify:
     redirect_uri = config.SPOTIFY_REDIRECT_URI
     refresh_token = config.SPOTIFY_REFRESH_TOKEN
 
-    log.debug(f"[get_spotify_client_from_refresh] Loaded env vars: "
-              f"client_id={'set' if client_id else 'unset'}, "
-              f"client_secret={'set' if client_secret else 'unset'}, "
-              f"redirect_uri={'set' if redirect_uri else 'unset'}, "
-              f"refresh_token={'set' if refresh_token else 'unset'}")
+    log.debug(
+        f"[get_spotify_client_from_refresh] Loaded env vars: "
+        f"client_id={'set' if client_id else 'unset'}, "
+        f"client_secret={'set' if client_secret else 'unset'}, "
+        f"redirect_uri={'set' if redirect_uri else 'unset'}, "
+        f"refresh_token={'set' if refresh_token else 'unset'}"
+    )
 
     if not all([client_id, client_secret, redirect_uri, refresh_token]):
-        log.error("[get_spotify_client_from_refresh] Missing one or more required Spotify credentials.")
+        log.error(
+            "[get_spotify_client_from_refresh] Missing one or more required Spotify credentials."
+        )
         raise ValueError("Missing one or more required Spotify credentials.")
 
-    log.debug("✅ [get_spotify_client_from_refresh] All Spotify environment variables found. Initializing client...")
+    log.debug(
+        "✅ [get_spotify_client_from_refresh] All Spotify environment variables found. Initializing client..."
+    )
 
     auth_manager = SpotifyOAuth(
         client_id=client_id,
@@ -75,10 +81,14 @@ def add_tracks_to_playlist(uris):
         log.info("[add_tracks_to_playlist] No tracks to add.")
         print("No tracks to add.")
         return
-    log.debug(f"[add_tracks_to_playlist] Adding {len(uris)} tracks to playlist ID {config.SPOTIFY_PLAYLIST_ID}")
+    log.debug(
+        f"[add_tracks_to_playlist] Adding {len(uris)} tracks to playlist ID {config.SPOTIFY_PLAYLIST_ID}"
+    )
     sp = get_spotify_client_from_refresh()
     sp.playlist_add_items(config.SPOTIFY_PLAYLIST_ID, uris)
-    log.info(f"[add_tracks_to_playlist] Added {len(uris)} track(s) to playlist {config.SPOTIFY_PLAYLIST_ID}.")
+    log.info(
+        f"[add_tracks_to_playlist] Added {len(uris)} track(s) to playlist {config.SPOTIFY_PLAYLIST_ID}."
+    )
     print(f"✅ Added {len(uris)} track(s) to playlist.")
 
 
@@ -96,11 +106,17 @@ def trim_playlist_to_limit(limit=200):
     total = current["total"]
     log.debug(f"[trim_playlist_to_limit] Playlist size: {total}, limit: {limit}")
     if total <= limit:
-        log.info(f"[trim_playlist_to_limit] Playlist is within limit ({total}/{limit}); no tracks removed.")
+        log.info(
+            f"[trim_playlist_to_limit] Playlist is within limit ({total}/{limit}); no tracks removed."
+        )
         return
     num_to_remove = total - limit
     uris_to_remove = [item["track"]["uri"] for item in current["items"][:num_to_remove]]
-    log.info(f"[trim_playlist_to_limit] Removing {num_to_remove} tracks from playlist ID {config.SPOTIFY_PLAYLIST_ID}.")
+    log.info(
+        f"[trim_playlist_to_limit] Removing {num_to_remove} tracks from playlist ID {config.SPOTIFY_PLAYLIST_ID}."
+    )
     sp.playlist_remove_all_occurrences_of_items(config.SPOTIFY_PLAYLIST_ID, uris_to_remove)
-    log.info(f"[trim_playlist_to_limit] Removed {len(uris_to_remove)} old tracks to stay under {limit}.")
+    log.info(
+        f"[trim_playlist_to_limit] Removed {len(uris_to_remove)} old tracks to stay under {limit}."
+    )
     print(f"🗑️ Removed {len(uris_to_remove)} old tracks to stay under {limit}.")

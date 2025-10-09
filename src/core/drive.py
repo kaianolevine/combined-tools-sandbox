@@ -77,7 +77,9 @@ def download_file(file_id, destination_path):
 
 # New function: list_files_in_folder
 def list_files_in_folder(folder_id, mime_type_filter=None):
-    log.debug(f"list_files_in_folder called with folder_id={folder_id}, mime_type_filter={mime_type_filter}")
+    log.debug(
+        f"list_files_in_folder called with folder_id={folder_id}, mime_type_filter={mime_type_filter}"
+    )
     log.info(f"Listing files in folder: {folder_id}")
     service = get_drive_service()
 

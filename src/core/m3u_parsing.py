@@ -33,6 +33,7 @@ def extract_tag_value(line, tag):
         log.debug(f"No match found for tag '{tag}'")
         return ""
 
+
 def get_most_recent_m3u_file(drive_service):
     log.info(f"Fetching most recent .m3u file from Drive folder ID: {config.FOLDER_ID}")
     results = (
@@ -91,7 +92,9 @@ def parse_m3u_lines(lines, existing_keys, file_date_str):
             if time and title:
                 current_minutes = parse_time_str(time)
                 if prev_minutes > -1 and current_minutes < prev_minutes:
-                    log.debug(f"Day rollover detected: previous minutes {prev_minutes}, current minutes {current_minutes}")
+                    log.debug(
+                        f"Day rollover detected: previous minutes {prev_minutes}, current minutes {current_minutes}"
+                    )
                     current_date += datetime.timedelta(days=1)
                 prev_minutes = current_minutes
 

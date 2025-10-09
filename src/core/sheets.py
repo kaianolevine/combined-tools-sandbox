@@ -12,7 +12,9 @@ def get_sheets_service():
 
 
 def get_or_create_sheet(spreadsheet_id: str, sheet_name: str) -> None:
-    log.debug(f"get_or_create_sheet called with spreadsheet_id={spreadsheet_id}, sheet_name={sheet_name}")
+    log.debug(
+        f"get_or_create_sheet called with spreadsheet_id={spreadsheet_id}, sheet_name={sheet_name}"
+    )
     service = get_sheets_service()
     sheets_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     sheet_titles = [s["properties"]["title"] for s in sheets_metadata.get("sheets", [])]
@@ -44,7 +46,9 @@ def read_sheet(spreadsheet_id, range_name):
 
 
 def write_sheet(spreadsheet_id, range_name, values=None):
-    log.debug(f"write_sheet called with spreadsheet_id={spreadsheet_id}, range_name={range_name}, values length={len(values) if values else 0}")
+    log.debug(
+        f"write_sheet called with spreadsheet_id={spreadsheet_id}, range_name={range_name}, values length={len(values) if values else 0}"
+    )
     if values:
         preview = values[:3] if len(values) > 3 else values
         log.debug(f"Preview of values to write: {preview}")
@@ -69,7 +73,9 @@ def write_sheet(spreadsheet_id, range_name, values=None):
 
 
 def append_rows(spreadsheet_id: str, range_name: str, values: list) -> None:
-    log.debug(f"append_rows called with spreadsheet_id={spreadsheet_id}, range_name={range_name}, number of rows={len(values)}")
+    log.debug(
+        f"append_rows called with spreadsheet_id={spreadsheet_id}, range_name={range_name}, number of rows={len(values)}"
+    )
     service = get_sheets_service()
     body = {"values": values}
     log.debug("Calling Sheets API to append rows...")
@@ -105,7 +111,9 @@ def log_info(spreadsheet_id: str, message: str):
 
 
 def log_processed(spreadsheet_id: str, filename: str, last_time: str):
-    log.debug(f"log_processed called with spreadsheet_id={spreadsheet_id}, filename={filename}, last_time={last_time}")
+    log.debug(
+        f"log_processed called with spreadsheet_id={spreadsheet_id}, filename={filename}, last_time={last_time}"
+    )
     get_or_create_sheet(spreadsheet_id, "Processed")
     log.info(f"Logging to Processed: {filename}, LastTime={last_time}")
     append_rows(spreadsheet_id, "Processed!A1", [[filename, last_time]])
@@ -119,7 +127,9 @@ def log_processed_full(
     title: str,
     artist: str,
 ):
-    log.debug(f"log_processed_full called with spreadsheet_id={spreadsheet_id}, filename={filename}, timestamp={timestamp}, last_play_time={last_play_time}, title={title}, artist={artist}")
+    log.debug(
+        f"log_processed_full called with spreadsheet_id={spreadsheet_id}, filename={filename}, timestamp={timestamp}, last_play_time={last_play_time}, title={title}, artist={artist}"
+    )
     get_or_create_sheet(spreadsheet_id, "Processed")
     log.info(
         f"Logging full processed entry: {filename}, Timestamp={timestamp}, LastPlayTime={last_play_time}, Title={title}, Artist={artist}"
@@ -146,7 +156,9 @@ def get_latest_processed(spreadsheet_id: str):
 
 # Ensure all required sheet tabs exist in a spreadsheet
 def ensure_sheet_exists(spreadsheet_id: str, sheet_name: str, headers: list[str] = None) -> None:
-    log.debug(f"ensure_sheet_exists called with spreadsheet_id={spreadsheet_id}, sheet_name={sheet_name}, headers={headers}")
+    log.debug(
+        f"ensure_sheet_exists called with spreadsheet_id={spreadsheet_id}, sheet_name={sheet_name}, headers={headers}"
+    )
     get_or_create_sheet(spreadsheet_id, sheet_name)
     if headers:
         existing = read_sheet(spreadsheet_id, f"{sheet_name}!1:1")
@@ -194,7 +206,9 @@ def get_sheet_metadata(spreadsheet_id: str):
 
 # Function to delete a sheet by sheet ID
 def delete_sheet_by_id(spreadsheet_id: str, sheet_id: int) -> None:
-    log.debug(f"delete_sheet_by_id called with spreadsheet_id={spreadsheet_id}, sheet_id={sheet_id}")
+    log.debug(
+        f"delete_sheet_by_id called with spreadsheet_id={spreadsheet_id}, sheet_id={sheet_id}"
+    )
     service = get_sheets_service()
     log.info(f"Deleting sheet with ID={sheet_id} from spreadsheet ID={spreadsheet_id}")
     request_body = {"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
