@@ -86,7 +86,11 @@ def test_trim_playlist_to_limit_exceeds(monkeypatch, capsys):
     monkeypatch.setattr(spotify.config, "SPOTIFY_PLAYLIST_ID", "playlist123")
     fake_sp = mock.Mock()
     fake_sp.playlist_items.return_value = {
-        "items": [{"track": {"uri": "uri1"}}, {"track": {"uri": "uri2"}}, {"track": {"uri": "uri3"}}],
+        "items": [
+            {"track": {"uri": "uri1"}},
+            {"track": {"uri": "uri2"}},
+            {"track": {"uri": "uri3"}},
+        ],
         "total": 3,
     }
     monkeypatch.setattr(spotify, "get_spotify_client_from_refresh", lambda: fake_sp)

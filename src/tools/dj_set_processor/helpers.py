@@ -55,14 +55,10 @@ def clean_title(title):
 
 
 def hex_to_rgb(hex_color):
-    """
-    Convert hex color string like '#fff3b0' to dict with red, green, blue floats 0-1.
-    """
     hex_color = hex_color.lstrip("#")
-    lv = len(hex_color)
-    if lv == 6:
+    if len(hex_color) == 6 and all(c in "0123456789abcdefABCDEF" for c in hex_color):
         r, g, b = tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
-    elif lv == 3:
+    elif len(hex_color) == 3 and all(c in "0123456789abcdefABCDEF" for c in hex_color):
         r, g, b = tuple(int(hex_color[i] * 2, 16) for i in range(3))
     else:
         r, g, b = (255, 255, 255)
@@ -83,7 +79,7 @@ def try_lock_folder(folder_name):
     results = drive_service.files().list(q=query, fields="files(id, name)").execute()
     files = results.get("files", [])
     if files:
-        config.logger.info(f"🔒 {folder_name} folder is locked — skipping.")
+        log.info(f"🔒 {folder_name} folder is locked — skipping.")
         return False
     # Create lock file
     file_metadata = {
@@ -111,7 +107,7 @@ def release_folder_lock(folder_name):
         try:
             drive_service.files().delete(fileId=f["id"]).execute()
         except HttpError as e:
-            config.logger.error(f"Error releasing lock: {e}")
+            log.error(f"Error releasing lock: {e}")
 
 
 def _try_lock_folder(folder_name):
