@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 from core import logger
 from core import google_api
 from tools.live_music_history import config
-import tools.live_music_history.m3u_parsing as m3u_parsing
+import core.m3u_parsing as m3u_parsing
 
 log = logger.get_logger()
 #from __future__ import print_function
