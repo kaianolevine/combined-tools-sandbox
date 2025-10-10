@@ -2,9 +2,10 @@ import pytz
 import datetime
 from urllib.parse import urlencode
 from core import logger
-from core import google_api
 from tools.live_music_history import config
 import core.m3u_parsing as m3u_parsing
+from core import google_drive
+from core import google_sheets
 
 log = logger.get_logger()
 # from __future__ import print_function
@@ -132,7 +133,7 @@ def publish_history(drive_service, sheets_service):
 
 if __name__ == "__main__":
 
-    drive_service = google_api.get_drive_service()
-    sheets_service = google_api.get_sheets_service()
+    drive_service = google_drive.get_drive_service()
+    sheets_service = google_sheets.get_sheets_service()
 
     publish_history(drive_service, sheets_service)

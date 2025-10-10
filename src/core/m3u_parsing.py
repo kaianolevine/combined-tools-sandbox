@@ -106,3 +106,31 @@ def parse_m3u_lines(lines, existing_keys, file_date_str):
                     log.debug(f"Appended new entry: {entries[-1]}")
     log.info(f"Parsed {len(entries)} new entries from .m3u file.")
     return entries
+
+
+def parse_m3u(sheets_service, filepath, spreadsheet_id):
+    """Parses .m3u file and returns a list of (artist, title, extvdj_line) tuples."""
+    import re
+
+    songs = []
+    sheets_service.log_debug(spreadsheet_id, f"Opening M3U file: {filepath}")
+    with open(filepath, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+        sheets_service.log_debug(spreadsheet_id, f"Read {len(lines)} lines from {filepath}")
+        for line in lines:
+            line = line.strip()
+            # sheets.log_debug(spreadsheet_id, f"Stripped line: {line}")
+            if line.startswith("#EXTVDJ:"):
+                artist_match = re.search(r"<artist>(.*?)</artist>", line)
+                title_match = re.search(r"<title>(.*?)</title>", line)
+                if artist_match and title_match:
+                    artist = artist_match.group(1).strip()
+                    title = title_match.group(1).strip()
+                    songs.append((artist, title, line))
+            #        sheets.log_debug(spreadsheet_id, f"Parsed song - Artist: '{artist}', Title: '{title}'")
+            #    else:
+            #        sheets.log_debug(spreadsheet_id, f"Missing artist or title in line: {line}")
+            # else:
+            #    sheets.log_debug(spreadsheet_id, f"Ignored line: {line}")
+    sheets_service.log_debug(spreadsheet_id, f"Total parsed songs: {len(songs)}")
+    return songs

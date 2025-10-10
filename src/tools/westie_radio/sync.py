@@ -2,7 +2,10 @@
 sync.py — Main integration script for Westie Radio automation.
 """
 
-from core import spotify, drive, sheets, google_api
+from core import spotify
+import core.google_drive as drive
+import core.google_sheets as sheets
+import core.m3u_parsing as m3u
 from tools.westie_radio import config
 from googleapiclient.errors import HttpError
 from core import logger as log
@@ -71,11 +74,11 @@ def main():
     for file in m3u_files:
         filename = file["name"]
         file_id = file["id"]
-        date = google_api.extract_date_from_filename(filename)
+        date = drive.extract_date_from_filename(filename)
         sheets.log_info(spreadsheet_id, f"🎶 Processing file: {filename}")
 
         drive.download_file(file_id, filename)
-        songs = google_api.parse_m3u(sheets, filename, spreadsheet_id)
+        songs = m3u.parse_m3u(sheets, filename, spreadsheet_id)
 
         last_extvdj_line = processed_map.get(filename)
         new_songs = songs

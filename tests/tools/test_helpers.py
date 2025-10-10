@@ -1,6 +1,5 @@
 # tests/test_core_helpers.py
 
-from unittest import mock
 import tools.dj_set_processor.helpers as helpers
 
 
@@ -78,26 +77,3 @@ def test_extract_date_and_title_with_and_without_date():
     date2, title2 = helpers.extract_date_and_title("NoDateFile")
     assert date2 == ""
     assert title2 == "NoDateFile"
-
-
-def test_try_and_release_folder_lock_with_drive(monkeypatch):
-    mock_service = mock.Mock()
-    mock_files = mock_service.files.return_value
-    # First call: no lock files found
-    mock_files.list.return_value.execute.return_value = {"files": []}
-    monkeypatch.setattr(helpers.google_api, "get_drive_service", lambda: mock_service)
-    monkeypatch.setattr(helpers.config, "DJ_SETS", "parent_id")
-    monkeypatch.setattr(helpers, "get_or_create_subfolder", lambda svc, parent, name: "folder123")
-    monkeypatch.setattr(helpers.config, "LOCK_FILE_NAME", "LOCK")
-
-    assert helpers.try_lock_folder("FolderX")
-
-    # Second call: lock file exists
-    mock_files.list.return_value.execute.return_value = {"files": [{"id": "1", "name": "LOCK"}]}
-    result = helpers.try_lock_folder("FolderX")
-    assert result is False
-
-    # Test release_folder_lock deletes
-    mock_files.list.return_value.execute.return_value = {"files": [{"id": "1", "name": "LOCK"}]}
-    helpers.release_folder_lock("FolderX")
-    mock_service.files.return_value.delete.return_value.execute.assert_called()

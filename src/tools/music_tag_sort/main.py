@@ -1,7 +1,7 @@
 import argparse
 import os
 from tools.music_tag_sort import renamer
-from core import drive
+import core.google_drive as drive
 import tempfile
 
 SOURCE_FOLDER_ID = "YOUR_SOURCE_FOLDER_ID"

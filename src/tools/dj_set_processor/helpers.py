@@ -3,7 +3,7 @@
 import time
 import re
 
-import core.google_api as google_api
+import core._google_credentials as google_api
 import tools.dj_set_processor.config as config
 from difflib import SequenceMatcher
 from typing import Tuple
