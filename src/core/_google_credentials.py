@@ -2,7 +2,8 @@ import os
 import json
 from google.oauth2 import service_account
 from core import logger as log
-
+from googleapiclient.discovery import build
+import gspread
 
 log = log.get_logger()
 
@@ -37,3 +38,20 @@ def load_credentials():
         "credentials.json",
         scopes=SCOPES,
     )
+
+
+def get_drive_service():
+    creds = load_credentials()
+    return build("drive", "v3", credentials=creds)
+
+
+def get_sheets_service():
+    """Return raw Sheets API client (Google API Resource)"""
+    creds = load_credentials()
+    return build("sheets", "v4", credentials=creds)
+
+
+def get_gspread_client():
+    """Return gspread client for convenient worksheet editing"""
+    creds = load_credentials()
+    return gspread.authorize(creds)
