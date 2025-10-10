@@ -3,7 +3,6 @@ import core._google_credentials as google_api
 import core.google_sheets as google_sheets
 from core import logger as log
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
-from googleapiclient.discovery import build
 from typing import List, Dict
 import os
 from googleapiclient.errors import HttpError
@@ -14,9 +13,7 @@ FOLDER_CACHE = {}
 
 
 def get_drive_service():
-    log.debug("get_drive_service called with no parameters")
-    creds = google_api.load_credentials()
-    return build("drive", "v3", credentials=creds)
+    return google_api.get_drive_client()
 
 
 def extract_date_from_filename(filename):

@@ -1,31 +1,17 @@
-import core._google_credentials as google_api
+from core import _google_credentials
 from core import logger as log
 from typing import Any, List, Dict
 from googleapiclient.errors import HttpError
-import gspread
 
 log = log.get_logger()
 
 
 def get_sheets_service():
-    log.debug("get_sheets_service called")
-    service = google_api.get_sheets_service()
-    log.debug("Sheets service obtained")
-    return service
+    return _google_credentials.get_sheets_client()
 
 
 def get_gspread_client():
-    """
-    Returns an authenticated gspread client using credentials loaded from
-    core._google_credentials. This allows using the gspread library for
-    convenient Google Sheets manipulation.
-
-    Returns:
-        gspread.Client: An authenticated gspread client instance.
-    """
-    creds = google_api.load_credentials()
-    client = gspread.authorize(creds)
-    return client
+    return _google_credentials.get_gspread_client()
 
 
 def get_or_create_sheet(spreadsheet_id: str, sheet_name: str) -> None:

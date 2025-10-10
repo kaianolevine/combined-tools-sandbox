@@ -171,24 +171,23 @@ def set_number_format(
     sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 
-def auto_resize_columns(sheets_service, spreadsheet_id, sheet_id, start_col, end_col):
-    """
-    Auto-resizes columns from start_col to end_col.
-    """
-    requests = [
-        {
-            "autoResizeDimensions": {
-                "dimensions": {
-                    "sheetId": sheet_id,
-                    "dimension": "COLUMNS",
-                    "startIndex": start_col - 1,
-                    "endIndex": end_col,
+def auto_resize_columns(service, spreadsheet_id, sheet_id, end_col, start_col=1):
+    """Automatically resize columns in a given sheet range."""
+    body = {
+        "requests": [
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": start_col - 1,
+                        "endIndex": end_col,
+                    }
                 }
             }
-        }
-    ]
-    body = {"requests": requests}
-    sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+        ]
+    }
+    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 
 def update_sheet_values(sheets_service, spreadsheet_id, sheet_name, values):

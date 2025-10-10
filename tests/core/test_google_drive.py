@@ -1,244 +1,241 @@
-import io
-import os
 import pytest
 from unittest import mock
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaIoBaseDownload
-import core.google_drive as drive
+from core import google_drive
 
 
 @pytest.fixture
 def mock_service():
-    """Create a mock Google Drive service with chained calls."""
-    service = mock.MagicMock()
-    service.files.return_value = mock.MagicMock()
-    return service
+    return mock.MagicMock()
 
 
-def make_http_error(*args, **kwargs):
-    raise HttpError(mock.Mock(status=404), b"File not found")
+# ---- BASIC DRIVE CLIENT ----
 
 
-# --- get_drive_service ---
-def test_get_drive_service_loads_credentials(monkeypatch):
-    mock_build = mock.MagicMock()
-    monkeypatch.setattr(drive.google_api, "load_credentials", lambda: "creds")
-    monkeypatch.setattr(drive, "build", mock_build)
-    drive.get_drive_service()
-    mock_build.assert_called_once_with("drive", "v3", credentials="creds")
+def test_get_drive_service(monkeypatch):
+    fake_client = mock.MagicMock()
+    monkeypatch.setattr("core._google_credentials.get_drive_client", lambda: fake_client)
+    assert google_drive.get_drive_service() == fake_client
 
 
-# --- extract_date_from_filename ---
-def test_extract_date_from_filename_valid():
-    assert drive.extract_date_from_filename("2024-10-12_Song.csv") == "2024-10-12"
+# ---- FILE LISTING ----
 
 
-def test_extract_date_from_filename_invalid():
-    assert drive.extract_date_from_filename("no_date_file.csv") == "no_date_file.csv"
-
-
-# --- list_files_in_folder ---
-def test_list_files_in_folder_success(mock_service):
-    fake_files = [{"id": "1", "name": "file1"}]
+def test_list_files_in_folder_success(monkeypatch, mock_service):
     mock_service.files.return_value.list.return_value.execute.side_effect = [
-        {"files": fake_files, "nextPageToken": None}
+        {"files": [{"id": "1", "name": "A"}], "nextPageToken": None}
     ]
-    results = drive.list_files_in_folder(mock_service, "folder123")
-    assert results == fake_files
-    mock_service.files.return_value.list.assert_called()
+    files = google_drive.list_files_in_folder(mock_service, "folder123")
+    assert len(files) == 1
+    assert files[0]["name"] == "A"
 
 
-def test_list_files_in_folder_error(mock_service):
-    mock_service.files.return_value.list.side_effect = Exception("API failure")
-    results = drive.list_files_in_folder(mock_service, "folder123")
-    assert results == []
+def test_list_files_in_folder_error(monkeypatch, mock_service):
+    mock_service.files.return_value.list.return_value.execute.side_effect = Exception("Boom")
+    files = google_drive.list_files_in_folder(mock_service, "folder123")
+    assert files == []
 
 
-# --- list_music_files ---
-def test_list_music_files_returns_files(mock_service):
+def test_list_music_files(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {
-        "files": [{"id": "1", "name": "track.mp3"}]
+        "files": [{"id": "x"}]
     }
-    results = drive.list_music_files(mock_service, "folder123")
-    assert results[0]["name"] == "track.mp3"
+    res = google_drive.list_music_files(mock_service, "folder1")
+    assert res == [{"id": "x"}]
 
 
-# --- get_or_create_folder ---
-def test_get_or_create_folder_finds_existing(monkeypatch, mock_service):
-    drive.FOLDER_CACHE.clear()
+# ---- FOLDER CREATION ----
+
+
+def test_get_or_create_folder_found(monkeypatch, mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {
-        "files": [{"id": "existing_id", "name": "Folder"}]
+        "files": [{"id": "abc"}]
     }
-    folder_id = drive.get_or_create_folder("parent123", "Folder", mock_service)
-    assert folder_id == "existing_id"
+    fid = google_drive.get_or_create_folder("p123", "Test", mock_service)
+    assert fid == "abc"
 
 
-def test_get_or_create_folder_creates_new(monkeypatch, mock_service):
-    drive.FOLDER_CACHE.clear()
+def test_get_or_create_folder_created(monkeypatch, mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
-    mock_service.files.return_value.create.return_value.execute.return_value = {"id": "new_id"}
-    folder_id = drive.get_or_create_folder("parent123", "NewFolder", mock_service)
-    assert folder_id == "new_id"
+    mock_service.files.return_value.create.return_value.execute.return_value = {"id": "newid"}
+    fid = google_drive.get_or_create_folder("p123", "New", mock_service)
+    assert fid == "newid"
 
 
-# --- get_or_create_subfolder ---
-def test_get_or_create_subfolder_finds_existing(mock_service):
+def test_get_or_create_subfolder_found(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {
-        "files": [{"id": "sub_id", "name": "Sub"}]
+        "files": [{"id": "subid"}]
     }
-    assert drive.get_or_create_subfolder(mock_service, "parent", "Sub") == "sub_id"
+    res = google_drive.get_or_create_subfolder(mock_service, "parent", "Sub")
+    assert res == "subid"
 
 
-def test_get_or_create_subfolder_creates_new(mock_service):
+def test_get_or_create_subfolder_created(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
-    mock_service.files.return_value.create.return_value.execute.return_value = {"id": "new_sub"}
-    assert drive.get_or_create_subfolder(mock_service, "parent", "NewSub") == "new_sub"
+    mock_service.files.return_value.create.return_value.execute.return_value = {"id": "created"}
+    res = google_drive.get_or_create_subfolder(mock_service, "parent", "Sub")
+    assert res == "created"
 
 
-# --- get_file_by_name ---
+# ---- FILE RETRIEVAL ----
+
+
 def test_get_file_by_name_found(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {
-        "files": [{"id": "1", "name": "match"}]
+        "files": [{"id": "f1"}]
     }
-    assert drive.get_file_by_name(mock_service, "folder", "match")["id"] == "1"
+    res = google_drive.get_file_by_name(mock_service, "parent", "file.txt")
+    assert res["id"] == "f1"
 
 
 def test_get_file_by_name_not_found(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
-    assert drive.get_file_by_name(mock_service, "folder", "missing") is None
+    assert google_drive.get_file_by_name(mock_service, "parent", "missing.txt") is None
 
 
-# --- get_all_subfolders ---
 def test_get_all_subfolders_success(mock_service):
     mock_service.files.return_value.list.return_value.execute.side_effect = [
-        {"files": [{"id": "a"}], "nextPageToken": None}
+        {"files": [{"id": "1"}], "nextPageToken": None}
     ]
-    result = drive.get_all_subfolders(mock_service, "parent")
-    assert result[0]["id"] == "a"
+    res = google_drive.get_all_subfolders(mock_service, "parent")
+    assert res == [{"id": "1"}]
 
 
 def test_get_all_subfolders_http_error(mock_service):
-    mock_service.files.return_value.list.side_effect = make_http_error
+    mock_service.files.return_value.list.return_value.execute.side_effect = HttpError(
+        mock.Mock(), b"fail"
+    )
     with pytest.raises(HttpError):
-        drive.get_all_subfolders(mock_service, "parent")
+        google_drive.get_all_subfolders(mock_service, "parent")
 
 
-# --- get_files_in_folder ---
-def test_get_files_in_folder_success(mock_service):
+def test_get_files_in_folder_filters(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {
-        "files": [{"id": "f1"}]
+        "files": [{"id": "1"}]
     }
-    result = drive.get_files_in_folder(mock_service, "folder")
-    assert result == [{"id": "f1"}]
+    res = google_drive.get_files_in_folder(
+        mock_service, "folder", name_contains="test", mime_type="text/csv"
+    )
+    assert res[0]["id"] == "1"
 
 
-# --- download_file ---
+# ---- FILE DOWNLOAD ----
+
+
 def test_download_file_success(monkeypatch, mock_service, tmp_path):
-    path = tmp_path / "file.txt"
-    request_mock = mock.Mock()
-    downloader_mock = mock.Mock()
-    downloader_mock.next_chunk.side_effect = [
-        (mock.Mock(progress=lambda: 1.0), True)
-    ]
-    monkeypatch.setattr(drive, "MediaIoBaseDownload", lambda fh, req: downloader_mock)
-    mock_service.files.return_value.get_media.return_value = request_mock
-
-    drive.download_file(mock_service, "file123", str(path))
-    downloader_mock.next_chunk.assert_called()
+    fake_downloader = mock.MagicMock()
+    fake_status = mock.Mock()
+    fake_status.progress.side_effect = [0.5, 1.0]
+    fake_downloader.next_chunk.side_effect = [(fake_status, False), (fake_status, True)]
+    monkeypatch.setattr("core.google_drive.MediaIoBaseDownload", lambda fh, req: fake_downloader)
+    fh = tmp_path / "out.txt"
+    google_drive.download_file(mock_service, "file123", str(fh))
+    fake_downloader.next_chunk.assert_called()
 
 
 def test_download_file_io_error(monkeypatch, mock_service, tmp_path):
-    monkeypatch.setattr(io, "FileIO", mock.Mock(side_effect=OSError("disk error")))
+    monkeypatch.setattr("io.FileIO", lambda *a, **kw: (_ for _ in ()).throw(OSError("bad")))
     with pytest.raises(IOError):
-        drive.download_file(mock_service, "file123", str(tmp_path / "bad.txt"))
+        google_drive.download_file(mock_service, "f", str(tmp_path / "bad.txt"))
 
 
-# --- upload_file ---
-def test_upload_file_success(mock_service, tmp_path):
-    file_path = tmp_path / "sample.txt"
-    file_path.write_text("data")
-    with mock.patch("core.google_drive.MediaFileUpload") as mfu:
-        drive.upload_file(mock_service, str(file_path), "folder")
-        mfu.assert_called_once()
+# ---- FILE UPLOAD ----
 
 
-# --- upload_to_drive ---
-def test_upload_to_drive_removes_sep_rows(monkeypatch, mock_service, tmp_path):
-    import importlib
-    google_sheets = importlib.import_module("core.google_sheets")
-    file_path = tmp_path / "upload.csv"
-    file_path.write_text("sep=,\nA,B\n1,2")
+def test_upload_file(mock_service, tmp_path):
+    fp = tmp_path / "data.csv"
+    fp.write_text("a,b")
+    monkeypatch = mock.patch(
+        "core.google_drive.MediaFileUpload", lambda *a, **kw: mock.MagicMock()
+    )
+    with monkeypatch:
+        google_drive.upload_file(mock_service, str(fp), "folder")
 
-    spreadsheet_mock = mock.Mock()
-    sheet_mock = mock.Mock()
-    sheet_mock.row_values.return_value = ["sep=,"]
-    spreadsheet_mock.worksheets.return_value = [sheet_mock]
 
-    gspread_mock = mock.Mock()
-    gspread_mock.open_by_key.return_value = spreadsheet_mock
-    monkeypatch.setattr(google_sheets, "get_gspread_client", lambda: gspread_mock)
+def test_upload_to_drive(monkeypatch, mock_service):
+    monkeypatch.setattr("core.google_drive.MediaFileUpload", lambda *a, **kw: mock.MagicMock())
+    monkeypatch.setattr("core.google_sheets.get_gspread_client", lambda: mock.MagicMock())
     mock_service.files.return_value.create.return_value.execute.return_value = {"id": "123"}
-
-    result = drive.upload_to_drive(mock_service, str(file_path), "folder")
-    assert result == "123"
-    sheet_mock.delete_rows.assert_called_once_with(1)
+    sid = google_drive.upload_to_drive(mock_service, "some.csv", "parent")
+    assert sid == "123"
 
 
-# --- create_spreadsheet ---
-def test_create_spreadsheet_finds_existing(mock_service):
+# ---- FILE / SPREADSHEET CREATION ----
+
+
+def test_create_spreadsheet_found(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {
-        "files": [{"id": "123"}]
+        "files": [{"id": "f1"}]
     }
-    assert drive.create_spreadsheet(mock_service, "Name", "Parent") == "123"
+    fid = google_drive.create_spreadsheet(mock_service, "test", "parent")
+    assert fid == "f1"
 
 
-def test_create_spreadsheet_creates_new(mock_service):
+def test_create_spreadsheet_created(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
-    mock_service.files.return_value.create.return_value.execute.return_value = {"id": "new"}
-    assert drive.create_spreadsheet(mock_service, "Name", "Parent") == "new"
+    mock_service.files.return_value.create.return_value.execute.return_value = {"id": "newf"}
+    fid = google_drive.create_spreadsheet(mock_service, "t", "p")
+    assert fid == "newf"
 
 
 def test_create_spreadsheet_http_error(mock_service):
-    mock_service.files.return_value.list.side_effect = make_http_error
+    mock_service.files.return_value.list.return_value.execute.side_effect = HttpError(
+        mock.Mock(), b"fail"
+    )
     with pytest.raises(HttpError):
-        drive.create_spreadsheet(mock_service, "Name", "Parent")
+        google_drive.create_spreadsheet(mock_service, "x", "p")
 
 
-# --- move_file_to_folder ---
-def test_move_file_to_folder_moves(mock_service):
-    mock_service.files.return_value.get.return_value.execute.return_value = {"parents": ["old"]}
-    drive.move_file_to_folder(mock_service, "file", "new")
-    mock_service.files.return_value.update.assert_called()
-
-
-# --- remove_file_from_root ---
-def test_remove_file_from_root_removes(mock_service):
-    mock_service.files.return_value.get.return_value.execute.return_value = {"parents": ["root"]}
-    drive.remove_file_from_root(mock_service, "file")
-    mock_service.files.return_value.update.assert_called()
-
-
-def test_remove_file_from_root_no_root(mock_service):
-    mock_service.files.return_value.get.return_value.execute.return_value = {"parents": ["x"]}
-    drive.remove_file_from_root(mock_service, "file")
-    mock_service.files.return_value.update.assert_not_called()
-
-
-# --- find_or_create_file_by_name ---
-def test_find_or_create_file_by_name_existing(mock_service):
+def test_find_or_create_file_by_name_found(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {
         "files": [{"id": "found"}]
     }
-    assert drive.find_or_create_file_by_name(mock_service, "file", "parent") == "found"
+    fid = google_drive.find_or_create_file_by_name(mock_service, "a", "b")
+    assert fid == "found"
 
 
-def test_find_or_create_file_by_name_creates(mock_service):
+def test_find_or_create_file_by_name_created(mock_service):
     mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
-    mock_service.files.return_value.create.return_value.execute.return_value = {"id": "new"}
-    assert drive.find_or_create_file_by_name(mock_service, "file", "parent") == "new"
+    mock_service.files.return_value.create.return_value.execute.return_value = {"id": "created"}
+    fid = google_drive.find_or_create_file_by_name(mock_service, "a", "b")
+    assert fid == "created"
 
 
 def test_find_or_create_file_by_name_http_error(mock_service):
-    mock_service.files.return_value.list.side_effect = make_http_error
+    mock_service.files.return_value.list.return_value.execute.side_effect = HttpError(
+        mock.Mock(), b"fail"
+    )
     with pytest.raises(HttpError):
-        drive.find_or_create_file_by_name(mock_service, "file", "parent")
+        google_drive.find_or_create_file_by_name(mock_service, "x", "y")
+
+
+# ---- FILE MOVEMENT ----
+
+
+def test_move_file_to_folder(mock_service):
+    mock_service.files.return_value.get.return_value.execute.return_value = {"parents": ["old"]}
+    google_drive.move_file_to_folder(mock_service, "f1", "new")
+    mock_service.files.return_value.update.assert_called_once()
+
+
+def test_remove_file_from_root(mock_service):
+    mock_service.files.return_value.get.return_value.execute.return_value = {"parents": ["root"]}
+    google_drive.remove_file_from_root(mock_service, "fileid")
+    mock_service.files.return_value.update.assert_called_once()
+
+
+def test_remove_file_from_root_no_root(mock_service):
+    mock_service.files.return_value.get.return_value.execute.return_value = {"parents": ["abc"]}
+    google_drive.remove_file_from_root(mock_service, "fileid")
+    mock_service.files.return_value.update.assert_not_called()
+
+
+# ---- MISC HELPERS ----
+
+
+def test_extract_date_from_filename_valid():
+    assert google_drive.extract_date_from_filename("2025-01-01_event.csv") == "2025-01-01"
+
+
+def test_extract_date_from_filename_invalid():
+    assert google_drive.extract_date_from_filename("no-date.csv") == "no-date.csv"

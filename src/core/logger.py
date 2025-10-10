@@ -1,6 +1,15 @@
 import logging
-
 import datetime
+
+# Create a shared logger instance
+logger = logging.getLogger("core")
+
+# Shortcut aliases
+debug = logger.debug
+info = logger.info
+warning = logger.warning
+error = logger.error
+exception = logger.exception
 
 # logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)

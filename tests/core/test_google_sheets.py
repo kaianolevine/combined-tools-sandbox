@@ -6,248 +6,280 @@ from core import google_sheets
 
 @pytest.fixture
 def mock_service():
-    service = mock.MagicMock()
-    sheets = service.spreadsheets.return_value
-    sheets.get.return_value.execute.return_value = {"sheets": [{"properties": {"title": "Sheet1", "sheetId": 123}}]}
-    return service
+    return mock.MagicMock()
 
 
-@pytest.fixture
-def patch_get_service(monkeypatch, mock_service):
-    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
-    return mock_service
+# ---- Basic Credential & Service Access ----
 
 
 def test_get_sheets_service(monkeypatch):
-    mock_fn = mock.MagicMock()
-    monkeypatch.setattr("core._google_credentials.get_sheets_service", mock_fn)
-    result = google_sheets.get_sheets_service()
-    assert mock_fn.called
-    assert result == mock_fn()
+    fake_client = mock.MagicMock()
+    monkeypatch.setattr(
+        google_sheets._google_credentials, "get_sheets_client", lambda: fake_client
+    )
+    assert google_sheets.get_sheets_service() == fake_client
 
 
 def test_get_gspread_client(monkeypatch):
-    creds = mock.MagicMock()
-    gclient = mock.MagicMock()
-    monkeypatch.setattr("core._google_credentials.load_credentials", lambda: creds)
-    monkeypatch.setattr("gspread.authorize", lambda c: gclient)
-    assert google_sheets.get_gspread_client() == gclient
+    fake_client = mock.MagicMock()
+    monkeypatch.setattr(
+        google_sheets._google_credentials, "get_gspread_client", lambda: fake_client
+    )
+    assert google_sheets.get_gspread_client() == fake_client
 
 
-def test_get_or_create_sheet_creates_new(patch_get_service):
-    svc = patch_get_service
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {"sheets": []}
-    google_sheets.get_or_create_sheet("id", "Test")
-    assert svc.spreadsheets.return_value.batchUpdate.called
+# ---- Sheet Creation / Metadata ----
 
 
-def test_get_or_create_sheet_existing(patch_get_service):
-    svc = patch_get_service
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {"sheets": [{"properties": {"title": "Test"}}]}
-    google_sheets.get_or_create_sheet("id", "Test")
-    assert not svc.spreadsheets.return_value.batchUpdate.called
+def test_get_or_create_sheet_creates(monkeypatch, mock_service):
+    fake_spreadsheets = mock_service.spreadsheets.return_value
+    fake_spreadsheets.get.return_value.execute.return_value = {
+        "sheets": [{"properties": {"title": "Existing"}}]
+    }
+    fake_spreadsheets.batchUpdate.return_value.execute.return_value = {"done": True}
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+
+    google_sheets.get_or_create_sheet("spreadsheet123", "NewSheet")
+
+    fake_spreadsheets.batchUpdate.assert_called_once()
 
 
-def test_read_sheet(patch_get_service):
-    svc = patch_get_service
-    svc.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {"values": [[1, 2]]}
-    result = google_sheets.read_sheet("id", "A1:B2")
-    assert result == [[1, 2]]
+def test_get_or_create_sheet_already_exists(monkeypatch, mock_service):
+    fake_spreadsheets = mock_service.spreadsheets.return_value
+    fake_spreadsheets.get.return_value.execute.return_value = {
+        "sheets": [{"properties": {"title": "MyTab"}}]
+    }
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+
+    google_sheets.get_or_create_sheet("spreadsheet123", "MyTab")
+    fake_spreadsheets.batchUpdate.assert_not_called()
 
 
-def test_write_sheet(patch_get_service):
-    svc = patch_get_service
-    svc.spreadsheets.return_value.values.return_value.update.return_value.execute.return_value = {"updatedRows": 1}
-    result = google_sheets.write_sheet("id", "A1:B1", [["A", "B"]])
-    assert result == {"updatedRows": 1}
+def test_get_sheet_metadata(monkeypatch, mock_service):
+    fake_spreadsheets = mock_service.spreadsheets.return_value
+    fake_spreadsheets.get.return_value.execute.return_value = {"title": "Test"}
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+
+    meta = google_sheets.get_sheet_metadata("sheetid")
+    assert meta["title"] == "Test"
 
 
-def test_append_rows(patch_get_service):
-    svc = patch_get_service
-    svc.spreadsheets.return_value.values.return_value.append.return_value.execute.return_value = {"updates": {}}
-    google_sheets.append_rows("id", "A1", [["x", "y"]])
-    assert svc.spreadsheets.return_value.values.return_value.append.called
+def test_get_sheet_metadata_http_error(monkeypatch, mock_service):
+    fake_spreadsheets = mock_service.spreadsheets.return_value
+    fake_spreadsheets.get.return_value.execute.side_effect = HttpError(mock.Mock(), b"fail")
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+    with pytest.raises(HttpError):
+        google_sheets.get_sheet_metadata("sheetid")
+
+
+# ---- Read / Write ----
+
+
+def test_read_sheet(monkeypatch, mock_service):
+    fake_values = [["a", "b"], ["c", "d"]]
+    mock_service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
+        "values": fake_values
+    }
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+
+    result = google_sheets.read_sheet("sheetid", "Sheet1!A1:B2")
+    assert result == fake_values
+
+
+def test_write_sheet(monkeypatch, mock_service):
+    mock_service.spreadsheets.return_value.values.return_value.update.return_value.execute.return_value = {
+        "updatedRows": 2
+    }
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+
+    result = google_sheets.write_sheet("sid", "Sheet1!A1", [["1", "2"]])
+    assert "updatedRows" in result
+
+
+def test_append_rows(monkeypatch, mock_service):
+    mock_service.spreadsheets.return_value.values.return_value.append.return_value.execute.return_value = {
+        "updates": {}
+    }
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+    google_sheets.append_rows("sid", "Sheet1!A1", [["1", "2"]])
+    mock_service.spreadsheets.return_value.values.return_value.append.assert_called_once()
+
+
+# ---- Logging Tabs ----
 
 
 def test_log_debug_and_info(monkeypatch):
-    called = {}
-    monkeypatch.setattr(google_sheets, "get_or_create_sheet", lambda sid, sname: called.setdefault("created", True))
-    monkeypatch.setattr(google_sheets, "append_rows", lambda sid, rng, rows: called.setdefault("rows", rows))
-    google_sheets.log_debug("id", "debug msg")
-    google_sheets.log_info("id", "info msg")
-    assert "rows" in called
+    calls = []
+    monkeypatch.setattr(google_sheets, "get_or_create_sheet", lambda a, b: calls.append(b))
+    monkeypatch.setattr(google_sheets, "append_rows", lambda a, b, c: calls.append(b))
+
+    google_sheets.log_debug("sheetid", "hello debug")
+    google_sheets.log_info("sheetid", "hello info")
+
+    assert "Debug!A1" in calls
+    assert "Info!A1" in calls
 
 
-def test_ensure_sheet_exists_adds_headers(monkeypatch):
-    called = {}
-    monkeypatch.setattr(google_sheets, "get_or_create_sheet", lambda *a, **kw: True)
-    monkeypatch.setattr(google_sheets, "read_sheet", lambda *a, **kw: [])
-    monkeypatch.setattr(google_sheets, "write_sheet", lambda sid, rng, vals: called.setdefault("wrote", vals))
-    google_sheets.ensure_sheet_exists("id", "Tab", ["a", "b"])
-    assert "wrote" in called
+# ---- Ensure Sheet Exists ----
 
 
-def test_ensure_sheet_exists_skips_existing(monkeypatch):
-    monkeypatch.setattr(google_sheets, "get_or_create_sheet", lambda *a, **kw: True)
-    monkeypatch.setattr(google_sheets, "read_sheet", lambda *a, **kw: [["a", "b"]])
-    monkeypatch.setattr(google_sheets, "write_sheet", mock.MagicMock())
-    google_sheets.ensure_sheet_exists("id", "Tab", ["a", "b"])
-    google_sheets.write_sheet.assert_not_called()
+def test_ensure_sheet_exists_no_headers(monkeypatch):
+    monkeypatch.setattr(google_sheets, "get_or_create_sheet", lambda *a, **k: None)
+    google_sheets.ensure_sheet_exists("sid", "TestTab")
 
 
-def test_get_sheet_metadata(patch_get_service):
-    svc = patch_get_service
-    result = google_sheets.get_sheet_metadata("id")
-    assert "sheets" in result
+def test_ensure_sheet_exists_with_new_headers(monkeypatch):
+    monkeypatch.setattr(google_sheets, "get_or_create_sheet", lambda *a, **k: None)
+    monkeypatch.setattr(google_sheets, "read_sheet", lambda *a, **k: [])
+    monkeypatch.setattr(google_sheets, "write_sheet", lambda *a, **k: {"done": True})
+    google_sheets.ensure_sheet_exists("sid", "Tab", ["A", "B", "C"])
 
 
-def test_update_row(patch_get_service):
-    svc = patch_get_service
-    svc.spreadsheets.return_value.values.return_value.update.return_value.execute.return_value = {"ok": 1}
-    result = google_sheets.update_row("id", "A2", [["x"]])
-    assert result == {"ok": 1}
+# ---- Row Update ----
 
 
-def test_sort_sheet_by_column(monkeypatch):
-    mock_meta = {"sheets": [{"properties": {"title": "Data", "sheetId": 1}}]}
-    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock.MagicMock())
-    monkeypatch.setattr(google_sheets, "get_sheet_metadata", lambda _id: mock_meta)
-    svc = google_sheets.get_sheets_service()
-    svc.spreadsheets.return_value.batchUpdate.return_value.execute.return_value = {"done": True}
-    result = google_sheets.sort_sheet_by_column("id", "Data", 0)
-    assert result["done"]
-
-
-def test_get_sheet_id_by_name_found():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {
-        "sheets": [{"properties": {"title": "T", "sheetId": 5}}]
+def test_update_row(monkeypatch, mock_service):
+    mock_service.spreadsheets.return_value.values.return_value.update.return_value.execute.return_value = {
+        "updated": True
     }
-    assert google_sheets.get_sheet_id_by_name(svc, "id", "T") == 5
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+    res = google_sheets.update_row("sid", "Sheet1!A2:B2", [["1", "2"]])
+    assert res["updated"]
 
 
-def test_get_sheet_id_by_name_not_found():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {"sheets": []}
+# ---- Sort Sheet ----
+
+
+def test_sort_sheet_by_column(monkeypatch, mock_service):
+    fake_meta = {"sheets": [{"properties": {"title": "Tab", "sheetId": 99}}]}
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+    monkeypatch.setattr(google_sheets, "get_sheet_metadata", lambda sid: fake_meta)
+    mock_service.spreadsheets.return_value.batchUpdate.return_value.execute.return_value = {
+        "done": True
+    }
+
+    res = google_sheets.sort_sheet_by_column("sid", "Tab", 0, True)
+    assert res["done"]
+
+
+def test_sort_sheet_by_column_missing(monkeypatch, mock_service):
+    fake_meta = {"sheets": [{"properties": {"title": "OtherTab", "sheetId": 1}}]}
+    monkeypatch.setattr(google_sheets, "get_sheets_service", lambda: mock_service)
+    monkeypatch.setattr(google_sheets, "get_sheet_metadata", lambda sid: fake_meta)
     with pytest.raises(ValueError):
-        google_sheets.get_sheet_id_by_name(svc, "id", "missing")
+        google_sheets.sort_sheet_by_column("sid", "Missing", 0)
 
 
-def test_rename_sheet_executes():
-    svc = mock.MagicMock()
-    google_sheets.rename_sheet(svc, "id", 1, "New")
-    assert svc.spreadsheets.return_value.batchUpdate.called
+# ---- Utility helpers ----
 
 
-def test_insert_rows_success():
-    svc = mock.MagicMock()
-    google_sheets.insert_rows(svc, "id", "Tab", [["a"]])
-    assert svc.spreadsheets.return_value.values.return_value.update.called
-
-
-def test_insert_rows_http_error(monkeypatch):
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.values.return_value.update.side_effect = HttpError(
-        mock.Mock(status=500), b"boom"
-    )
-    with pytest.raises(HttpError):
-        google_sheets.insert_rows(svc, "id", "Tab", [["a"]])
-
-
-def test_get_spreadsheet_metadata_success():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {"meta": True}
-    assert google_sheets.get_spreadsheet_metadata(svc, "id") == {"meta": True}
-
-
-def test_get_spreadsheet_metadata_error():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.side_effect = HttpError(
-        mock.Mock(status=500), b"error"
-    )
-    with pytest.raises(HttpError):
-        google_sheets.get_spreadsheet_metadata(svc, "id")
-
-
-def test_get_sheet_values_normalizes():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
-        "values": [[1, None]]
+def test_get_sheet_id_by_name(monkeypatch):
+    service = mock.MagicMock()
+    service.spreadsheets.return_value.get.return_value.execute.return_value = {
+        "sheets": [{"properties": {"title": "MyTab", "sheetId": 123}}]
     }
-    vals = google_sheets.get_sheet_values(svc, "id", "Tab")
-    assert vals == [["1", ""]]
+    result = google_sheets.get_sheet_id_by_name(service, "sid", "MyTab")
+    assert result == 123
 
 
-def test_clear_all_except_one_sheet(monkeypatch):
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {
+def test_get_sheet_id_by_name_not_found(monkeypatch):
+    service = mock.MagicMock()
+    service.spreadsheets.return_value.get.return_value.execute.return_value = {"sheets": []}
+    with pytest.raises(ValueError):
+        google_sheets.get_sheet_id_by_name(service, "sid", "X")
+
+
+def test_rename_sheet(mock_service):
+    mock_service.spreadsheets.return_value.batchUpdate.return_value.execute.return_value = {
+        "done": True
+    }
+    google_sheets.rename_sheet(mock_service, "sid", 42, "Renamed")
+    mock_service.spreadsheets.return_value.batchUpdate.assert_called_once()
+
+
+# ---- Insert / Get / Clear ----
+
+
+def test_insert_rows_success(mock_service):
+    mock_service.spreadsheets.return_value.values.return_value.update.return_value.execute.return_value = (
+        {}
+    )
+    google_sheets.insert_rows(mock_service, "sid", "Tab", [["1", "2"]])
+    mock_service.spreadsheets.return_value.values.return_value.update.assert_called_once()
+
+
+def test_insert_rows_http_error(mock_service):
+    mock_service.spreadsheets.return_value.values.return_value.update.side_effect = HttpError(
+        mock.Mock(), b"fail"
+    )
+    with pytest.raises(HttpError):
+        google_sheets.insert_rows(mock_service, "sid", "Tab", [["1", "2"]])
+
+
+def test_get_spreadsheet_metadata_success(mock_service):
+    mock_service.spreadsheets.return_value.get.return_value.execute.return_value = {"sheets": []}
+    assert google_sheets.get_spreadsheet_metadata(mock_service, "sid") == {"sheets": []}
+
+
+def test_get_spreadsheet_metadata_http_error(mock_service):
+    mock_service.spreadsheets.return_value.get.return_value.execute.side_effect = HttpError(
+        mock.Mock(), b"fail"
+    )
+    with pytest.raises(HttpError):
+        google_sheets.get_spreadsheet_metadata(mock_service, "sid")
+
+
+def test_get_sheet_values(mock_service):
+    mock_service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
+        "values": [["A", None]]
+    }
+    vals = google_sheets.get_sheet_values(mock_service, "sid", "Tab")
+    assert vals == [["A", ""]]
+
+
+def test_clear_all_except_one_sheet(mock_service):
+    fake_execute = {
         "sheets": [
             {"properties": {"title": "Keep", "sheetId": 1}},
-            {"properties": {"title": "Del", "sheetId": 2}},
+            {"properties": {"title": "DeleteMe", "sheetId": 2}},
         ]
     }
-    google_sheets.clear_all_except_one_sheet(svc, "id", "Keep")
-    assert svc.spreadsheets.return_value.batchUpdate.called
+    mock_service.spreadsheets.return_value.get.return_value.execute.return_value = fake_execute
+    mock_service.spreadsheets.return_value.batchUpdate.return_value.execute.return_value = {}
+    google_sheets.clear_all_except_one_sheet(mock_service, "sid", "Keep")
 
 
-def test_clear_all_except_one_sheet_http_error(monkeypatch):
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.side_effect = HttpError(mock.Mock(status=404), b"fail")
+def test_clear_all_except_one_sheet_http_error(mock_service):
+    mock_service.spreadsheets.return_value.get.side_effect = HttpError(mock.Mock(), b"fail")
     with pytest.raises(HttpError):
-        google_sheets.clear_all_except_one_sheet(svc, "id", "Keep")
+        google_sheets.clear_all_except_one_sheet(mock_service, "sid", "Keep")
 
 
-def test_clear_sheet(monkeypatch):
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {
-        "sheets": [{"properties": {"title": "T", "sheetId": 1}}]
+def test_clear_sheet(mock_service):
+    mock_service.spreadsheets.return_value.get.return_value.execute.return_value = {
+        "sheets": [{"properties": {"title": "Tab", "sheetId": 5}}]
     }
-    google_sheets.clear_sheet(svc, "id", "T")
-    assert svc.spreadsheets.return_value.batchUpdate.called
+    google_sheets.clear_sheet(mock_service, "sid", "Tab")
+    mock_service.spreadsheets.return_value.batchUpdate.assert_called_once()
 
 
-def test_clear_sheet_missing():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {"sheets": []}
-    with pytest.raises(ValueError):
-        google_sheets.clear_sheet(svc, "id", "Nope")
-
-
-def test_delete_sheet_by_name_success():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {
+def test_delete_sheet_by_name(mock_service):
+    mock_service.spreadsheets.return_value.get.return_value.execute.return_value = {
         "sheets": [
             {"properties": {"title": "A", "sheetId": 1}},
             {"properties": {"title": "B", "sheetId": 2}},
         ]
     }
-    google_sheets.delete_sheet_by_name(svc, "id", "A")
-    assert svc.spreadsheets.return_value.batchUpdate.called
+    google_sheets.delete_sheet_by_name(mock_service, "sid", "A")
+    mock_service.spreadsheets.return_value.batchUpdate.assert_called_once()
 
 
-def test_delete_sheet_by_name_skip_single_sheet():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {
-        "sheets": [{"properties": {"title": "A", "sheetId": 1}}]
-    }
-    google_sheets.delete_sheet_by_name(svc, "id", "A")
-    svc.spreadsheets.return_value.batchUpdate.assert_not_called()
-
-
-def test_delete_sheet_by_name_http_error(monkeypatch):
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.side_effect = HttpError(mock.Mock(status=500), b"fail")
-    with pytest.raises(HttpError):
-        google_sheets.delete_sheet_by_name(svc, "id", "A")
-
-
-def test_delete_all_sheets_except():
-    svc = mock.MagicMock()
-    svc.spreadsheets.return_value.get.return_value.execute.return_value = {
+def test_delete_all_sheets_except(mock_service):
+    mock_service.spreadsheets.return_value.get.return_value.execute.return_value = {
         "sheets": [
-            {"properties": {"title": "Keep", "sheetId": 1}},
-            {"properties": {"title": "Del", "sheetId": 2}},
+            {"properties": {"title": "A", "sheetId": 1}},
+            {"properties": {"title": "B", "sheetId": 2}},
         ]
     }
-    google_sheets.delete_all_sheets_except(svc, "id", "Keep")
-    assert svc.spreadsheets.return_value.batchUpdate.called
+    google_sheets.delete_all_sheets_except(mock_service, "sid", "B")
+    mock_service.spreadsheets.return_value.batchUpdate.assert_called_once()

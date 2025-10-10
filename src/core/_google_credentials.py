@@ -8,7 +8,7 @@ import gspread
 log = log.get_logger()
 
 
-def load_credentials():
+def _load_credentials():
     """Load credentials either from GitHub secret (GOOGLE_CREDENTIALS_JSON) or local credentials.json.
     If GOOGLE_CREDENTIALS_JSON is set but contains invalid JSON or is not a dict, logs a warning and falls back to credentials.json.
     """
@@ -40,18 +40,18 @@ def load_credentials():
     )
 
 
-def get_drive_service():
-    creds = load_credentials()
+def get_drive_client():
+    creds = _load_credentials()
     return build("drive", "v3", credentials=creds)
 
 
-def get_sheets_service():
+def get_sheets_client():
     """Return raw Sheets API client (Google API Resource)"""
-    creds = load_credentials()
+    creds = _load_credentials()
     return build("sheets", "v4", credentials=creds)
 
 
 def get_gspread_client():
     """Return gspread client for convenient worksheet editing"""
-    creds = load_credentials()
+    creds = _load_credentials()
     return gspread.authorize(creds)
