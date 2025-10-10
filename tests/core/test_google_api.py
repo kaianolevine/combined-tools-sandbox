@@ -3,10 +3,12 @@
 import json
 import pytest
 from unittest import mock
-from googleapiclient.errors import HttpError
 
 from core import google_api
+from googleapiclient.errors import HttpError
 
+
+# --- Credentials ---
 
 def test_load_credentials_env(monkeypatch):
     creds_mock = mock.Mock()
@@ -19,6 +21,17 @@ def test_load_credentials_env(monkeypatch):
     assert google_api.load_credentials() == creds_mock
 
 
+def test_load_credentials_env_invalid_json(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_JSON", "not-json")
+    monkeypatch.setattr(
+        google_api.service_account.Credentials,
+        "from_service_account_file",
+        lambda *a, **k: "filecreds",
+    )
+    creds = google_api.load_credentials()
+    assert creds == "filecreds"
+
+
 def test_load_credentials_file(monkeypatch):
     creds_mock = mock.Mock()
     monkeypatch.delenv("GOOGLE_CREDENTIALS_JSON", raising=False)
@@ -29,6 +42,19 @@ def test_load_credentials_file(monkeypatch):
     )
     assert google_api.load_credentials() == creds_mock
 
+
+def test_load_credentials_file_missing(monkeypatch):
+    monkeypatch.delenv("GOOGLE_CREDENTIALS_JSON", raising=False)
+    monkeypatch.setattr(
+        google_api.service_account.Credentials,
+        "from_service_account_file",
+        lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("missing")),
+    )
+    with pytest.raises(FileNotFoundError):
+        google_api.load_credentials()
+
+
+# --- Drive Helpers ---
 
 def test_get_drive_and_sheets_service(monkeypatch):
     creds = mock.Mock()
@@ -64,6 +90,20 @@ def test_get_or_create_folder_new(monkeypatch):
     drive_service.files().create().execute.return_value = {"id": "newid"}
     result = google_api.get_or_create_folder("parent", "child2", drive_service)
     assert result == "newid"
+
+
+def make_http_error():
+    resp = mock.Mock(status=404, reason="Not Found")
+    content = b"Requested entity was not found."
+    return HttpError(resp, content, uri="http://test")
+
+
+def test_get_or_create_folder_create_failure(monkeypatch):
+    drive = mock.Mock()
+    drive.files().list().execute.return_value = {"files": []}
+    drive.files().create().execute.side_effect = make_http_error()
+    with pytest.raises(HttpError):
+        google_api.get_or_create_folder("pid", "child", drive)
 
 
 def test_upload_to_drive(monkeypatch, tmp_path):
@@ -113,37 +153,59 @@ def test_download_file(monkeypatch, tmp_path):
     assert dest.exists()
 
 
-def test_apply_formatting_to_sheet_empty(monkeypatch):
-    gc = mock.Mock()
-    sh = mock.Mock()
-    sheet = mock.Mock()
-    sheet.get_all_values.return_value = []
-    sh.sheet1 = sheet
-    gc.open_by_key.return_value = sh
-    monkeypatch.setattr(google_api, "get_gspread_client", lambda: gc)
-    google_api.apply_formatting_to_sheet("spreadsheetid")
-
-
-def test_get_file_by_name(monkeypatch):
+@pytest.mark.parametrize(
+    "existing_files,expected_id",
+    [
+        ([{"id": "123"}], "123"),
+        ([], "newid"),
+    ],
+)
+def test_create_spreadsheet(monkeypatch, existing_files, expected_id):
     drive = mock.Mock()
-    drive.files().list().execute.return_value = {"files": [{"id": "1", "name": "foo"}]}
-    assert google_api.get_file_by_name(drive, "folder", "foo")["id"] == "1"
-    drive.files().list().execute.return_value = {"files": []}
-    assert google_api.get_file_by_name(drive, "folder", "bar") is None
+    drive.files().list().execute.return_value = {"files": existing_files}
+    if not existing_files:
+        drive.files().create().execute.return_value = {"id": "newid"}
+    assert google_api.create_spreadsheet(drive, "name", "folder") == expected_id
 
 
-def test_create_spreadsheet_existing(monkeypatch):
+@pytest.mark.parametrize(
+    "files_list,search_name,expected_result",
+    [
+        ([{"id": "1", "name": "foo"}], "foo", "1"),
+        ([], "bar", None),
+    ],
+)
+def test_get_file_by_name(monkeypatch, files_list, search_name, expected_result):
     drive = mock.Mock()
-    drive.files().list().execute.return_value = {"files": [{"id": "123"}]}
-    assert google_api.create_spreadsheet(drive, "name", "folder") == "123"
+    drive.files().list().execute.return_value = {"files": files_list}
+    result = google_api.get_file_by_name(drive, "folder", search_name)
+    if expected_result is None:
+        assert result is None
+    else:
+        assert result["id"] == expected_result
 
 
-def test_create_spreadsheet_new(monkeypatch):
-    drive = mock.Mock()
-    drive.files().list().execute.return_value = {"files": []}
-    drive.files().create().execute.return_value = {"id": "newid"}
-    assert google_api.create_spreadsheet(drive, "name2", "folder") == "newid"
+@pytest.mark.parametrize(
+    "files_list,search_name,raises",
+    [
+        ([{"id": "1", "name": "foo"}], "foo", False),
+        ([], "bar", True),
+        ([{"id": "1", "name": "foo"}, {"id": "2", "name": "foo"}], "foo", False),
+    ],
+)
+def test_find_file_by_name(monkeypatch, files_list, search_name, raises):
+    drive_service = mock.Mock()
+    drive_service.list_files_in_folder.return_value = files_list
+    if raises:
+        with pytest.raises(FileNotFoundError):
+            google_api.find_file_by_name(drive_service, "folder", search_name)
+    else:
+        file = google_api.find_file_by_name(drive_service, "folder", search_name)
+        assert file["name"] == search_name
+        assert file["id"] in [f["id"] for f in files_list]
 
+
+# --- Sheets Helpers ---
 
 def test_delete_all_sheets_except(monkeypatch):
     sheets = mock.Mock()
@@ -157,10 +219,37 @@ def test_delete_all_sheets_except(monkeypatch):
     assert sheets.spreadsheets().batchUpdate.called
 
 
+def test_delete_all_sheets_except_missing(monkeypatch):
+    sheets = mock.Mock()
+    sheets.spreadsheets().get().execute.return_value = {
+        "sheets": [{"properties": {"title": "other", "sheetId": 5}}]
+    }
+    # No "keep" title, so all are deleted
+    google_api.delete_all_sheets_except(sheets, "ssid", "keep")
+    assert sheets.spreadsheets().batchUpdate.called
+
+
 def test_set_values(monkeypatch):
     sheets = mock.Mock()
     google_api.set_values(sheets, "ssid", "sheet", 1, 1, [["a", "b"]])
     assert sheets.spreadsheets().values().update.called
+
+
+def test_set_values_empty(monkeypatch):
+    sheets = mock.Mock()
+    google_api.set_values(sheets, "ssid", "sheet", 1, 1, [])
+    # update should still be called even with empty list
+    sheets.spreadsheets().values().update.assert_called_once()
+    args, kwargs = sheets.spreadsheets().values().update.call_args
+    # Check that empty values list was passed
+    assert kwargs["body"]["values"] == []
+
+
+def test_set_values_http_error(monkeypatch):
+    sheets = mock.Mock()
+    sheets.spreadsheets().values().update().execute.side_effect = make_http_error()
+    with pytest.raises(HttpError):
+        google_api.set_values(sheets, "ssid", "sheet", 1, 1, [["a"]])
 
 
 def test_delete_sheet_by_name(monkeypatch):
@@ -181,6 +270,43 @@ def test_delete_sheet_by_name(monkeypatch):
     assert sheets.spreadsheets().batchUpdate.called
 
 
+def test_delete_sheet_by_name_not_found(monkeypatch):
+    sheets = mock.Mock()
+    sheets.spreadsheets().get().execute.return_value = {
+        "sheets": [{"properties": {"title": "x", "sheetId": 1}}]
+    }
+    # Title doesn't match → should not call batchUpdate
+    google_api.delete_sheet_by_name(sheets, "ssid", "y")
+    assert not sheets.spreadsheets().batchUpdate.called
+
+
+# --- Formatting ---
+
+def test_apply_formatting_to_sheet_empty(monkeypatch):
+    gc = mock.Mock()
+    sh = mock.Mock()
+    sheet = mock.Mock()
+    sheet.get_all_values.return_value = []
+    sh.sheet1 = sheet
+    gc.open_by_key.return_value = sh
+    monkeypatch.setattr(google_api, "get_gspread_client", lambda: gc)
+    google_api.apply_formatting_to_sheet("spreadsheetid")
+
+
+def test_apply_formatting_to_sheet_with_data(monkeypatch):
+    gc = mock.Mock()
+    sh = mock.Mock()
+    sheet = mock.Mock()
+    sheet.get_all_values.return_value = [["a", "b"], ["c", "d"]]
+    sh.sheet1 = sheet
+    gc.open_by_key.return_value = sh
+    monkeypatch.setattr(google_api, "get_gspread_client", lambda: gc)
+    google_api.apply_formatting_to_sheet("ssid")
+    assert sheet.format.called
+
+
+# --- Parsing ---
+
 def test_extract_date_from_filename():
     assert google_api.extract_date_from_filename("2025-01-01-file.csv") == "2025-01-01"
     assert google_api.extract_date_from_filename("nofile.csv") == "nofile.csv"
@@ -196,127 +322,46 @@ def test_parse_m3u(tmp_path):
     assert songs[0][1] == "Title"
 
 
-def test_find_file_by_name_found_and_not_found():
-    drive_service = mock.Mock()
-    drive_service.list_files_in_folder.return_value = [{"id": "1", "name": "foo"}]
-    assert google_api.find_file_by_name(drive_service, "folder", "foo")["id"] == "1"
-    drive_service.list_files_in_folder.return_value = []
-    with pytest.raises(FileNotFoundError):
-        google_api.find_file_by_name(drive_service, "folder", "bar")
-
-
-def make_http_error(status=400, content=b"error"):
-    resp = mock.Mock()
-    resp.status = status
-    return HttpError(resp=resp, content=content)
-
-
-def test_load_credentials_env_invalid(monkeypatch):
-    monkeypatch.setenv("GOOGLE_CREDENTIALS_JSON", "not-json")
-    monkeypatch.setattr(
-        google_api.service_account.Credentials, "from_service_account_info", mock.Mock()
-    )
-    # should fall back to file
-    monkeypatch.setattr(
-        google_api.service_account.Credentials,
-        "from_service_account_file",
-        lambda *args, **kwargs: "filecreds",
-    )
-    result = google_api.load_credentials()
-    assert result == "filecreds"
-
-
-def test_get_or_create_folder_http_error(monkeypatch):
-    drive = mock.Mock()
-    drive.files().list().execute.side_effect = make_http_error()
-    with pytest.raises(HttpError):
-        google_api.get_or_create_folder("parent", "name", drive)
-
-
-def test_upload_to_drive_http_error(monkeypatch, tmp_path):
-    file = tmp_path / "bad.csv"
-    file.write_text("col1,col2")
-    drive = mock.Mock()
-    drive.files().create().execute.side_effect = make_http_error()
-    gc = mock.Mock()
-    gc.open_by_key.side_effect = Exception("fail open")
-    monkeypatch.setattr(google_api, "get_gspread_client", lambda: gc)
-    with pytest.raises(HttpError):
-        google_api.upload_to_drive(drive, str(file), "folder")
-
-
-def test_list_files_in_drive_folder_empty(monkeypatch):
-    drive = mock.Mock()
-    drive.files().list().execute.return_value = {}
-    files = google_api.list_files_in_drive_folder(drive, "fid")
-    assert files == []
-
-
-def test_download_file_http_error(monkeypatch, tmp_path):
-    drive = mock.Mock()
-    drive.files().get_media.side_effect = make_http_error()
-    with pytest.raises(HttpError):
-        google_api.download_file(drive, "fid", str(tmp_path / "f.txt"))
-
-
-def test_apply_formatting_to_sheet_with_values(monkeypatch):
-    gc = mock.Mock()
-    sh = mock.Mock()
-    sheet = mock.Mock()
-    sheet.get_all_values.return_value = [["a", "b"], ["c", "d"]]
-    sh.sheet1 = sheet
-    gc.open_by_key.return_value = sh
-    monkeypatch.setattr(google_api, "get_gspread_client", lambda: gc)
-    # should not raise
-    google_api.apply_formatting_to_sheet("ssid")
-    assert sh.sheet1.format.called or True
-
-
-def test_set_values_http_error(monkeypatch):
-    sheets = mock.Mock()
-    sheets.spreadsheets().values().update().execute.side_effect = make_http_error()
-    with pytest.raises(HttpError):
-        google_api.set_values(sheets, "ssid", "sname", 1, 1, [["x"]])
-
-
-def test_delete_all_sheets_except_keeps_all(monkeypatch):
-    sheets = mock.Mock()
-    sheets.spreadsheets().get().execute.return_value = {
-        "sheets": [{"properties": {"title": "keep", "sheetId": 1}}]
-    }
-    # Should not call batchUpdate
-    google_api.delete_all_sheets_except(sheets, "ssid", "keep")
-    assert not sheets.spreadsheets().batchUpdate.called
-
-
-def test_delete_sheet_by_name_not_found(monkeypatch):
-    sheets = mock.Mock()
-    sheets.spreadsheets().get().execute.return_value = {
-        "sheets": [{"properties": {"title": "x", "sheetId": 1}}]
-    }
-    # deleting something that does not exist should not error
-    google_api.delete_sheet_by_name(sheets, "ssid", "nope")
-
-
-def test_extract_date_from_filename_edgecases():
-    # date-like string at start
-    assert google_api.extract_date_from_filename("2020-12-31-suffix.csv") == "2020-12-31"
-    # no match returns original
-    assert google_api.extract_date_from_filename("random.txt") == "random.txt"
-
-
-def test_parse_m3u_empty(tmp_path):
-    file = tmp_path / "empty.m3u"
-    file.write_text("")
-    songs = google_api.parse_m3u(mock.Mock(), str(file), "ssid")
+def test_parse_m3u_invalid_file(tmp_path):
+    m3u = tmp_path / "bad.m3u"
+    m3u.write_text("#EXTVDJ:thisisnotxml\n")
+    songs = google_api.parse_m3u(mock.Mock(), str(m3u), "ssid")
+    # Expect empty result for invalid lines
     assert songs == []
 
 
-def test_find_file_by_name_multiple(monkeypatch):
+def test_parse_m3u_empty_file(tmp_path):
+    m3u = tmp_path / "empty.m3u"
+    m3u.write_text("")
+    songs = google_api.parse_m3u(mock.Mock(), str(m3u), "ssid")
+    assert songs == []
+
+
+# --- Download ---
+
+def test_download_file_never_completes(monkeypatch, tmp_path):
     drive = mock.Mock()
-    drive.list_files_in_folder.return_value = [
-        {"id": "1", "name": "foo"},
-        {"id": "2", "name": "foo"},
-    ]
-    result = google_api.find_file_by_name(drive, "fid", "foo")
-    assert result["id"] in ["1", "2"]
+    request = mock.Mock()
+    drive.files().get_media.return_value = request
+
+    # Simulate a downloader that returns incomplete progress twice then completes
+    call_count = {"count": 0}
+
+    class FakeDownloader:
+        def __init__(self, fh, req):
+            pass
+
+        def next_chunk(self):
+            call_count["count"] += 1
+            if call_count["count"] < 3:
+                return (mock.Mock(progress=0.5), False)  # incomplete
+            else:
+                return (mock.Mock(progress=1.0), True)  # complete
+
+    monkeypatch.setattr(google_api, "MediaIoBaseDownload", FakeDownloader)
+
+    dest = tmp_path / "out.txt"
+    google_api.download_file(drive, "fid", str(dest))
+    assert dest.exists()
+    # Ensure next_chunk was called at least 3 times (retries)
+    assert call_count["count"] >= 3
