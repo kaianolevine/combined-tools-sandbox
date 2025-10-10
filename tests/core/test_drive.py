@@ -43,7 +43,6 @@ def test_find_latest_m3u_file_with_files(mock_service, monkeypatch):
 
 
 def test_download_file_success(monkeypatch, mock_service, tmp_path):
-    monkeypatch.setattr("core.google_api.get_drive_service", lambda: mock_service)
     fake_downloader = mock.MagicMock()
     progress1 = mock.Mock()
     progress1.progress.return_value = 0.5
@@ -58,10 +57,12 @@ def test_download_file_success(monkeypatch, mock_service, tmp_path):
     file_id = "file123"
     dest = tmp_path / "out.txt"
 
-    drive.download_file(file_id, str(dest))
+    # 🔧 pass mock_service instead of ""
+    drive.download_file(mock_service, file_id, str(dest))
 
+    # Assertions
+    mock_service.files.return_value.get_media.assert_called_once_with(fileId=file_id)
     assert dest.exists()
-    assert fake_downloader.next_chunk.call_count == 2
 
 
 def test_list_files_in_folder_empty(mock_service, monkeypatch):

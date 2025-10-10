@@ -5,6 +5,9 @@ from mutagen.mp3 import MP3
 from mutagen.flac import FLAC
 from mutagen.mp4 import MP4
 from mutagen.easyid3 import EasyID3
+import tempfile
+from pydrive2.auth import GoogleAuth
+from pydrive2.drive import GoogleDrive
 import logging
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -130,3 +133,18 @@ def generate_filename(metadata: Dict[str, str], config: Dict) -> str:
         return None
     logging.debug(f"Generated filename: {'__'.join(filename_parts)}")
     return "__".join(filename_parts) + config.get("extension", ".mp3")
+
+
+def download_and_rename_files_from_drive(folder_id, local_output_dir):
+    gauth = GoogleAuth()
+    gauth.LocalWebserverAuth()
+    drive = GoogleDrive(gauth)
+
+    file_list = drive.ListFile({"q": f"'{folder_id}' in parents and trashed=false"}).GetList()
+
+    for file in file_list:
+        _, temp_path = tempfile.mkstemp()
+        file.GetContentFile(temp_path)
+        print(f"Downloaded: {file['title']}")
+        new_path = rename_music_file(temp_path, local_output_dir)
+        print(f"Renamed: {new_path}")

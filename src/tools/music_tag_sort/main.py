@@ -1,7 +1,11 @@
 import argparse
 import os
-from tools.music_tag_sort.renamer import rename_files_in_directory
-from tools.music_tag_sort.drive_handler import process_drive_folder
+from tools.music_tag_sort import renamer
+from core import drive
+import tempfile
+
+SOURCE_FOLDER_ID = "YOUR_SOURCE_FOLDER_ID"
+DEST_FOLDER_ID = "YOUR_DEST_FOLDER_ID"
 
 
 def main():
@@ -23,7 +27,21 @@ def main():
         local_dir = args.directory or "./music"
         print(f"🎵 Renaming files in local directory: {local_dir}")
         config = {"rename_order": ["bpm", "title", "artist"], "separator": "__"}
-        rename_files_in_directory(local_dir, config)
+        renamer.rename_files_in_directory(local_dir, config)
+
+
+def process_drive_folder():
+    service = drive.get_drive_service()
+    music_files = drive.list_music_files(service, SOURCE_FOLDER_ID)
+
+    for file in music_files:
+        temp_path = os.path.join(tempfile.gettempdir(), file["name"])
+        drive.download_file(service, file["id"], temp_path)
+        print(f"Downloaded: {file['name']}")
+        renamed_path = renamer.rename_music_file(temp_path, tempfile.gettempdir())
+        print(f"Renamed to: {os.path.basename(renamed_path)}")
+        drive.upload_file(service, renamed_path, DEST_FOLDER_ID)
+        print(f"Uploaded: {os.path.basename(renamed_path)}")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
-from googleapiclient.http import MediaIoBaseDownload
 import io
 from core import google_api
 from core import logger as log
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+import os
+
 
 log = log.get_logger()
 
@@ -42,39 +44,6 @@ def find_latest_m3u_file(folder_id):
     return items[0] if items else None
 
 
-def download_file(file_id, destination_path):
-    """Download a file from Google Drive by ID using the Drive API."""
-    log.debug(f"download_file called with file_id={file_id}, destination_path={destination_path}")
-    log.info(f"Starting download for file_id={file_id} to {destination_path}")
-    service = get_drive_service()
-
-    log.debug("Preparing request for file download")
-    # Prepare request for file download
-    request = service.files().get_media(fileId=file_id)
-
-    # Attempt to open the destination file for writing
-    try:
-        fh = io.FileIO(destination_path, "wb")
-        log.debug(f"Destination file {destination_path} opened for writing")
-    except Exception as e:
-        log.exception(f"Failed to open destination file {destination_path}")
-        raise IOError(f"Could not create or write to file: {destination_path}") from e
-
-    # Download file in chunks
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    chunk_count = 0
-    log.info("Beginning chunked download")
-    while not done:
-        status, done = downloader.next_chunk()
-        chunk_count += 1
-        progress_percent = int(status.progress() * 100) if status else 0
-        log.debug(f"Chunk {chunk_count}: Download progress {progress_percent}%")
-        print(f"⬇️  Download {progress_percent}%.")
-    log.info(f"Download complete for file_id={file_id} to {destination_path}")
-    log.debug(f"Total chunks downloaded: {chunk_count}")
-
-
 # New function: list_files_in_folder
 def list_files_in_folder(folder_id, mime_type_filter=None):
     log.debug(
@@ -107,3 +76,47 @@ def list_files_in_folder(folder_id, mime_type_filter=None):
     else:
         log.debug("No files found in folder.")
     return items
+
+
+def list_music_files(service, folder_id):
+    query = f"'{folder_id}' in parents and mimeType contains 'audio'"
+    results = service.files().list(q=query, fields="files(id, name)").execute()
+    return results.get("files", [])
+
+
+def download_file(service, file_id, destination_path):
+    """Download a file from Google Drive by ID using the Drive API."""
+    log.debug(f"download_file called with file_id={file_id}, destination_path={destination_path}")
+    log.info(f"Starting download for file_id={file_id} to {destination_path}")
+
+    log.debug("Preparing request for file download")
+    # Prepare request for file download
+    request = service.files().get_media(fileId=file_id)
+
+    # Attempt to open the destination file for writing
+    try:
+        fh = io.FileIO(destination_path, "wb")
+        log.debug(f"Destination file {destination_path} opened for writing")
+    except Exception as e:
+        log.exception(f"Failed to open destination file {destination_path}")
+        raise IOError(f"Could not create or write to file: {destination_path}") from e
+
+    # Download file in chunks
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    chunk_count = 0
+    log.info("Beginning chunked download")
+    while not done:
+        status, done = downloader.next_chunk()
+        chunk_count += 1
+        progress_percent = int(status.progress() * 100) if status else 0
+        log.debug(f"Chunk {chunk_count}: Download progress {progress_percent}%")
+        print(f"⬇️  Download {progress_percent}%.")
+    log.info(f"Download complete for file_id={file_id} to {destination_path}")
+    log.debug(f"Total chunks downloaded: {chunk_count}")
+
+
+def upload_file(service, filepath, folder_id):
+    file_metadata = {"name": os.path.basename(filepath), "parents": [folder_id]}
+    media = MediaFileUpload(filepath, resumable=True)
+    service.files().create(body=file_metadata, media_body=media, fields="id").execute()
