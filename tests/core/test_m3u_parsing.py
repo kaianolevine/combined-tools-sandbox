@@ -1,9 +1,5 @@
-import io
 import pytest
-import datetime
-import pytz
 from unittest import mock
-from googleapiclient.errors import HttpError
 from core import m3u_parsing
 
 
@@ -13,6 +9,7 @@ def mock_drive_service():
 
 
 # ---- parse_time_str ----
+
 
 def test_parse_time_str_valid():
     """Ensure valid HH:MM strings are parsed correctly."""
@@ -28,6 +25,7 @@ def test_parse_time_str_invalid(caplog):
 
 # ---- extract_tag_value ----
 
+
 def test_extract_tag_value_found():
     line = "<artist>Daft Punk</artist>"
     assert m3u_parsing.extract_tag_value(line, "artist") == "Daft Punk"
@@ -39,6 +37,7 @@ def test_extract_tag_value_not_found():
 
 
 # ---- get_most_recent_m3u_file ----
+
 
 def test_get_most_recent_m3u_file_success(monkeypatch, mock_drive_service):
     mock_drive_service.files.return_value.list.return_value.execute.return_value = {
@@ -59,6 +58,7 @@ def test_get_most_recent_m3u_file_empty(monkeypatch, mock_drive_service):
 
 
 # ---- download_m3u_file ----
+
 
 def test_download_m3u_file_success(monkeypatch, mock_drive_service):
     """Ensure file download completes successfully even if content is empty."""
@@ -89,6 +89,7 @@ def test_download_m3u_file_partial_progress(monkeypatch, mock_drive_service):
 
 
 # ---- parse_m3u_lines ----
+
 
 def test_parse_m3u_lines_single_entry(monkeypatch):
     monkeypatch.setattr(m3u_parsing.config, "TIMEZONE", "UTC")
@@ -131,6 +132,7 @@ def test_parse_m3u_lines_missing_tags(monkeypatch):
 
 
 # ---- parse_m3u ----
+
 
 def test_parse_m3u_valid(tmp_path):
     m3u_path = tmp_path / "sample.m3u"
