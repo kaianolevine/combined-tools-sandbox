@@ -99,10 +99,9 @@ def append_rows(spreadsheet_id: str, range_name: str, values: list) -> None:
 # Utility logging functions to handle writing to specific tabs
 def log_debug(spreadsheet_id: str, message: str):
     log.debug(f"log_debug called with spreadsheet_id={spreadsheet_id}, message={message}")
-    # get_or_create_sheet(spreadsheet_id, "Debug")
+    get_or_create_sheet(spreadsheet_id, "Debug")
     log.debug(f"Logging to Debug: {message}")
-    # append_rows(spreadsheet_id, "Debug!A1", [[message]])
-    pass
+    append_rows(spreadsheet_id, "Debug!A1", [[message]])
 
 
 def log_info(spreadsheet_id: str, message: str):
@@ -135,18 +134,6 @@ def get_sheet_metadata(spreadsheet_id: str):
     metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     log.info(f"Metadata keys available: {list(metadata.keys())}")
     return metadata
-
-
-# Function to delete a sheet by sheet ID
-def delete_sheet_by_id(spreadsheet_id: str, sheet_id: int) -> None:
-    log.debug(
-        f"delete_sheet_by_id called with spreadsheet_id={spreadsheet_id}, sheet_id={sheet_id}"
-    )
-    service = get_sheets_service()
-    log.info(f"Deleting sheet with ID={sheet_id} from spreadsheet ID={spreadsheet_id}")
-    request_body = {"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
-    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=request_body).execute()
-    log.info(f"Sheet with ID={sheet_id} deleted successfully from spreadsheet ID={spreadsheet_id}")
 
 
 def update_row(spreadsheet_id: str, range_: str, values: list[list[str]]):
@@ -293,35 +280,6 @@ def insert_rows(sheets_service, spreadsheet_id: str, sheet_name: str, values: Li
         raise
 
 
-def delete_sheet_by_name(sheets_service, spreadsheet_id: str, sheet_name: str):
-    """
-    Deletes a sheet by its name from the spreadsheet.
-    """
-    log.info(f"🗑️ Deleting sheet '{sheet_name}' if it exists")
-    try:
-        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        sheets = spreadsheet.get("sheets", [])
-        if len(sheets) <= 1:
-            log.warning(f"Not deleting sheet '{sheet_name}': spreadsheet only has one sheet.")
-            return
-        sheet_id = None
-        for sheet in sheets:
-            if sheet["properties"]["title"] == sheet_name:
-                sheet_id = sheet["properties"]["sheetId"]
-                break
-        if sheet_id is not None:
-            body = {"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id, body=body
-            ).execute()
-            log.info(f"✅ Sheet '{sheet_name}' deleted successfully")
-        else:
-            log.info(f"Sheet '{sheet_name}' not found; no deletion necessary")
-    except HttpError as error:
-        log.error(f"An error occurred while deleting sheet: {error}")
-        raise
-
-
 def get_spreadsheet_metadata(sheets_service, spreadsheet_id: str) -> Dict:
     """
     Retrieves the metadata of the spreadsheet, including sheets info.
@@ -425,6 +383,52 @@ def clear_all_except_one_sheet(sheets_service, spreadsheet_id: str, sheet_to_kee
         raise
 
 
+def clear_sheet(sheets_service, spreadsheet_id, sheet_name):
+    # Get sheetId from sheet name
+    metadata = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    sheet_id = None
+    for sheet in metadata["sheets"]:
+        if sheet["properties"]["title"] == sheet_name:
+            sheet_id = sheet["properties"]["sheetId"]
+            break
+
+    if sheet_id is None:
+        raise ValueError(f"Sheet name '{sheet_name}' not found in spreadsheet.")
+
+    body = {"requests": [{"updateCells": {"range": {"sheetId": sheet_id}, "fields": "*"}}]}
+
+    sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+
+
+def delete_sheet_by_name(sheets_service, spreadsheet_id: str, sheet_name: str):
+    """
+    Deletes a sheet by its name from the spreadsheet.
+    """
+    log.info(f"🗑️ Deleting sheet '{sheet_name}' if it exists")
+    try:
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = spreadsheet.get("sheets", [])
+        if len(sheets) <= 1:
+            log.warning(f"Not deleting sheet '{sheet_name}': spreadsheet only has one sheet.")
+            return
+        sheet_id = None
+        for sheet in sheets:
+            if sheet["properties"]["title"] == sheet_name:
+                sheet_id = sheet["properties"]["sheetId"]
+                break
+        if sheet_id is not None:
+            body = {"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id, body=body
+            ).execute()
+            log.info(f"✅ Sheet '{sheet_name}' deleted successfully")
+        else:
+            log.info(f"Sheet '{sheet_name}' not found; no deletion necessary")
+    except HttpError as error:
+        log.error(f"An error occurred while deleting sheet: {error}")
+        raise
+
+
 def delete_all_sheets_except(sheets_service, spreadsheet_id, sheet_to_keep):
     """
     Deletes all sheets except the one named sheet_to_keep.
@@ -442,20 +446,3 @@ def delete_all_sheets_except(sheets_service, spreadsheet_id, sheet_to_keep):
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id, body=body
         ).execute()
-
-
-def clear_sheet(sheets_service, spreadsheet_id, sheet_name):
-    # Get sheetId from sheet name
-    metadata = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-    sheet_id = None
-    for sheet in metadata["sheets"]:
-        if sheet["properties"]["title"] == sheet_name:
-            sheet_id = sheet["properties"]["sheetId"]
-            break
-
-    if sheet_id is None:
-        raise ValueError(f"Sheet name '{sheet_name}' not found in spreadsheet.")
-
-    body = {"requests": [{"updateCells": {"range": {"sheetId": sheet_id}, "fields": "*"}}]}
-
-    sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()

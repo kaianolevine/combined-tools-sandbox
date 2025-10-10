@@ -4,25 +4,31 @@
 
 📄 core/google_drive.py
    └─ def get_drive_service()
+
    └─ def extract_date_from_filename(filename)
+
    └─ def list_files_in_folder(service, folder_id, mime_type_filter)
    └─ def list_music_files(service, folder_id)
-   └─ def download_file(service, file_id, destination_path)
-   └─ def upload_file(service, filepath, folder_id)
+
    └─ def get_or_create_folder(parent_folder_id, name, drive_service)
-   └─ def upload_to_drive(drive, filepath, parent_id)
-   └─ def list_files_in_drive_folder(drive, folder_id)
    └─ def get_or_create_subfolder(drive_service, parent_folder_id, subfolder_name)
    └─ def get_file_by_name(drive_service, folder_id, filename)
+   └─ def get_all_subfolders(drive_service, parent_folder_id)
+   └─ def get_files_in_folder(service, folder_id, name_contains, mime_type, trashed)
+
+   └─ def download_file(service, file_id, destination_path)
+   └─ def upload_file(service, filepath, folder_id)
+   └─ def upload_to_drive(drive, filepath, parent_id)
+   
    └─ def create_spreadsheet(drive_service, name, parent_folder_id, mime_type)
    └─ def move_file_to_folder(drive_service, file_id, folder_id)
    └─ def remove_file_from_root(drive_service, file_id)
-   └─ def get_all_subfolders(drive_service, parent_folder_id)
-   └─ def get_files_in_folder(service, folder_id, name_contains, mime_type, trashed)
    └─ def find_or_create_file_by_name(drive_service, name, parent_folder_id, mime_type)
+   
 
 📄 core/google_sheets.py
    └─ def get_sheets_service()
+
    └─ def get_or_create_sheet(spreadsheet_id, sheet_name)
    └─ def read_sheet(spreadsheet_id, range_name)
    └─ def write_sheet(spreadsheet_id, range_name, values)
@@ -35,12 +41,12 @@
    └─ def update_row(spreadsheet_id, range_, values)
    └─ def sort_sheet_by_column(spreadsheet_id, sheet_name, column_index, ascending, start_row, end_row)
    └─ def get_sheet_id_by_name(sheet_service, spreadsheet_id, sheet_name)
+   └─ def get_spreadsheet_metadata(sheets_service, spreadsheet_id)
+   └─ def get_sheet_values(sheets_service, spreadsheet_id, sheet_name)
    └─ def rename_sheet(sheets_service, spreadsheet_id, sheet_id, new_title)
    └─ def insert_rows(sheets_service, spreadsheet_id, sheet_name, values)
    └─ def delete_sheet_by_name(sheets_service, spreadsheet_id, sheet_name)
-   └─ def get_spreadsheet_metadata(sheets_service, spreadsheet_id)
    └─ def write_sheet_data(sheet_service, spreadsheet_id, sheet_name, header, rows)
-   └─ def get_sheet_values(sheets_service, spreadsheet_id, sheet_name)
    └─ def clear_all_except_one_sheet(sheets_service, spreadsheet_id, sheet_to_keep)
    └─ def delete_all_sheets_except(sheets_service, spreadsheet_id, sheet_to_keep)
    └─ def clear_sheet(sheets_service, spreadsheet_id, sheet_name)

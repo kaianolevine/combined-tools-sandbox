@@ -115,7 +115,7 @@ def main():
     # Normalize any leftover status prefixes before processing
     normalize_prefixes_in_source(drive)
 
-    files = google_api.list_files_in_drive_folder(drive, config.CSV_SOURCE_FOLDER_ID)
+    files = google_api.list_files_in_folder(drive, config.CSV_SOURCE_FOLDER_ID)
     log.info(f"Found {len(files)} files in source folder")
     for file_metadata in files:
         filename = file_metadata["name"]

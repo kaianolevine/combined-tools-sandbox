@@ -34,7 +34,7 @@ def initialize_spreadsheet():
             title = sheet_info.get("properties", {}).get("title", "")
             sheet_id = sheet_info.get("properties", {}).get("sheetId", None)
             if title == "Sheet1" and sheet_id is not None:
-                sheets.delete_sheet_by_id(spreadsheet_id, sheet_id)
+                sheets.delete_sheet_by_id(sheets.get_sheets_service(), spreadsheet_id, "Sheet1")
                 sheets.log_debug(spreadsheet_id, "🗑 Deleted default 'Sheet1'.")
     except HttpError as e:
         sheets.log_debug(spreadsheet_id, f"⚠️ Failed to delete 'Sheet1': {e}")

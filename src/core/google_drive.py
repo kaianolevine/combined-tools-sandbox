@@ -26,80 +26,76 @@ def extract_date_from_filename(filename):
     return match.group(1) if match else filename
 
 
-def list_files_in_folder(service, folder_id, mime_type_filter=None):
+def list_files_in_folder(
+    service,
+    folder_id,
+    mime_type_filter=None,
+    include_all_drives=True,
+    include_folders=False,
+):
+    """
+    List files in a Google Drive folder, optionally filtering by MIME type.
+    Supports both standard Drive and Shared Drive contexts.
+    :param service: Google Drive API service instance.
+    :param folder_id: The ID of the folder to list files from.
+    :param mime_type_filter: Optional. If set, restricts results to this MIME type.
+    :param include_all_drives: If True (default), includes files from all drives (Shared Drives support).
+    :param include_folders: If False (default), excludes folders from results.
+    :return: List of file dictionaries.
+    """
     log.debug(
-        f"list_files_in_folder called with folder_id={folder_id}, mime_type_filter={mime_type_filter}"
+        f"list_files_in_folder called with folder_id={folder_id}, "
+        f"mime_type_filter={mime_type_filter}, include_all_drives={include_all_drives}, include_folders={include_folders}"
     )
-    log.info(f"Listing files in folder: {folder_id}")
-
-    query = f"'{folder_id}' in parents and mimeType != 'application/vnd.google-apps.folder'"
+    query = f"'{folder_id}' in parents"
+    if not include_folders:
+        query += " and mimeType != 'application/vnd.google-apps.folder'"
     if mime_type_filter:
         query += f" and mimeType = '{mime_type_filter}'"
         log.info(f"Applying mime_type_filter: {mime_type_filter}")
-
+    query += " and trashed = false"
     log.debug(f"Drive query: {query}")
-    results = (
-        service.files()
-        .list(
-            q=query,
-            pageSize=1000,
-            fields="files(id, name, modifiedTime)",
-            orderBy="modifiedTime desc",
+    files = []
+    page_token = None
+    while True:
+        try:
+            params = {
+                "q": query,
+                "fields": "nextPageToken, files(id, name, mimeType, modifiedTime)",
+                "pageToken": page_token,
+                "orderBy": "modifiedTime desc",
+            }
+            if include_all_drives:
+                params["supportsAllDrives"] = True
+                params["includeItemsFromAllDrives"] = True
+                params["spaces"] = "drive"
+            result = service.files().list(**params).execute()
+            batch = result.get("files", [])
+            files.extend(batch)
+            page_token = result.get("nextPageToken", None)
+            log.debug(
+                f"Fetched {len(batch)} files (cumulative total: {len(files)}) from folder {folder_id}"
+            )
+            if page_token is None:
+                break
+        except Exception as e:
+            log.error(f"Error listing files in folder {folder_id}: {e}")
+            break
+    log.info(f"Found {len(files)} files in folder {folder_id}.")
+    if files:
+        file_details = ", ".join(
+            [f"{item.get('id', '?')}:{item.get('name', '?')}" for item in files]
         )
-        .execute()
-    )
-    items = results.get("files", [])
-    log.info(f"Found {len(items)} files in folder {folder_id}.")
-    if items:
-        file_details = ", ".join([f"{item['id']}:{item['name']}" for item in items])
         log.debug(f"Files found: {file_details}")
     else:
         log.debug("No files found in folder.")
-    return items
+    return files
 
 
 def list_music_files(service, folder_id):
     query = f"'{folder_id}' in parents and mimeType contains 'audio'"
     results = service.files().list(q=query, fields="files(id, name)").execute()
     return results.get("files", [])
-
-
-def download_file(service, file_id, destination_path):
-    """Download a file from Google Drive by ID using the Drive API."""
-    log.debug(f"download_file called with file_id={file_id}, destination_path={destination_path}")
-    log.info(f"Starting download for file_id={file_id} to {destination_path}")
-
-    log.debug("Preparing request for file download")
-    # Prepare request for file download
-    request = service.files().get_media(fileId=file_id)
-
-    # Attempt to open the destination file for writing
-    try:
-        fh = io.FileIO(destination_path, "wb")
-        log.debug(f"Destination file {destination_path} opened for writing")
-    except Exception as e:
-        log.exception(f"Failed to open destination file {destination_path}")
-        raise IOError(f"Could not create or write to file: {destination_path}") from e
-
-    # Download file in chunks
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    chunk_count = 0
-    log.info("Beginning chunked download")
-    while not done:
-        status, done = downloader.next_chunk()
-        chunk_count += 1
-        progress_percent = int(status.progress() * 100) if status else 0
-        log.debug(f"Chunk {chunk_count}: Download progress {progress_percent}%")
-        print(f"⬇️  Download {progress_percent}%.")
-    log.info(f"Download complete for file_id={file_id} to {destination_path}")
-    log.debug(f"Total chunks downloaded: {chunk_count}")
-
-
-def upload_file(service, filepath, folder_id):
-    file_metadata = {"name": os.path.basename(filepath), "parents": [folder_id]}
-    media = MediaFileUpload(filepath, resumable=True)
-    service.files().create(body=file_metadata, media_body=media, fields="id").execute()
 
 
 def get_or_create_folder(parent_folder_id: str, name: str, drive_service) -> str:
@@ -145,60 +141,6 @@ def get_or_create_folder(parent_folder_id: str, name: str, drive_service) -> str
 
     FOLDER_CACHE[cache_key] = folder_id
     return folder_id
-
-
-def upload_to_drive(drive, filepath, parent_id):
-    log.debug(f"Uploading file '{filepath}' to Drive folder ID '{parent_id}'")
-    file_metadata = {
-        "name": os.path.basename(filepath),
-        "parents": [parent_id],
-        "mimeType": "application/vnd.google-apps.spreadsheet",
-    }
-    media = MediaFileUpload(filepath, mimetype="text/csv")
-    uploaded = (
-        drive.files()
-        .create(body=file_metadata, media_body=media, fields="id", supportsAllDrives=True)
-        .execute()
-    )
-    log.info(f"📄 Uploaded to Drive as Google Sheet: {filepath}")
-    log.debug(f"Uploaded file ID: {uploaded['id']}")
-
-    # TODO - move this to a sheets function
-    # After uploading, use gspread to open the sheet and check for 'sep=' in first row of all worksheets
-    gc = google_sheets.get_gspread_client()
-    spreadsheet = gc.open_by_key(uploaded["id"])
-    for sheet in spreadsheet.worksheets():
-        first_row = sheet.row_values(1)
-        if first_row and first_row[0].strip().lower().startswith("sep="):
-            sheet.delete_rows(1)
-
-    return uploaded["id"]
-
-
-def list_files_in_drive_folder(drive, folder_id):
-    log.debug(f"Listing files in Drive folder ID: {folder_id}")
-    query = f"'{folder_id}' in parents and trashed = false"
-    files = []
-    page_token = None
-    while True:
-        response = (
-            drive.files()
-            .list(
-                q=query,
-                spaces="drive",
-                fields="nextPageToken, files(id, name, mimeType)",
-                pageToken=page_token,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-            )
-            .execute()
-        )
-        files.extend(response.get("files", []))
-        page_token = response.get("nextPageToken", None)
-        if page_token is None:
-            break
-    log.debug(f"Found {len(files)} files in folder ID: {folder_id}")
-    return files
 
 
 def get_or_create_subfolder(drive_service, parent_folder_id, subfolder_name):
@@ -250,6 +192,133 @@ def get_file_by_name(drive_service, folder_id, filename):
     if files:
         return files[0]
     return None
+
+
+def get_all_subfolders(drive_service, parent_folder_id: str) -> List[Dict]:
+    """
+    Returns a list of all subfolders in the specified parent folder.
+    Supports Shared Drives.
+    """
+    log.info(
+        f"📂 Retrieving all subfolders in folder ID {parent_folder_id} (shared drives enabled)"
+    )
+    try:
+        query = f"'{parent_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        folders = []
+        page_token = None
+        while True:
+            response = (
+                drive_service.files()
+                .list(
+                    q=query,
+                    spaces="drive",
+                    fields="nextPageToken, files(id, name)",
+                    pageToken=page_token,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                )
+                .execute()
+            )
+            folders.extend(response.get("files", []))
+            page_token = response.get("nextPageToken", None)
+            if page_token is None:
+                break
+        log.info(f"📂 Found {len(folders)} subfolders under {parent_folder_id}")
+        return folders
+    except HttpError as error:
+        log.error(f"An error occurred while retrieving subfolders: {error}")
+        raise
+
+
+def get_files_in_folder(service, folder_id, name_contains=None, mime_type=None, trashed=False):
+    """Returns a list of files in a Google Drive folder, optionally filtering by name substring and MIME type."""
+    query = f"'{folder_id}' in parents"
+    if name_contains:
+        query += f" and name contains '{name_contains}'"
+    if mime_type:
+        query += f" and mimeType = '{mime_type}'"
+    if trashed is False:
+        query += " and trashed = false"
+
+    results = (
+        service.files()
+        .list(
+            q=query,
+            spaces="drive",
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
+        .execute()
+    )
+
+    return results.get("files", [])
+
+
+def download_file(service, file_id, destination_path):
+    """Download a file from Google Drive by ID using the Drive API."""
+    log.debug(f"download_file called with file_id={file_id}, destination_path={destination_path}")
+    log.info(f"Starting download for file_id={file_id} to {destination_path}")
+
+    log.debug("Preparing request for file download")
+    # Prepare request for file download
+    request = service.files().get_media(fileId=file_id)
+
+    # Attempt to open the destination file for writing
+    try:
+        fh = io.FileIO(destination_path, "wb")
+        log.debug(f"Destination file {destination_path} opened for writing")
+    except Exception as e:
+        log.exception(f"Failed to open destination file {destination_path}")
+        raise IOError(f"Could not create or write to file: {destination_path}") from e
+
+    # Download file in chunks
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    chunk_count = 0
+    log.info("Beginning chunked download")
+    while not done:
+        status, done = downloader.next_chunk()
+        chunk_count += 1
+        progress_percent = int(status.progress() * 100) if status else 0
+        log.debug(f"Chunk {chunk_count}: Download progress {progress_percent}%")
+        print(f"⬇️  Download {progress_percent}%.")
+    log.info(f"Download complete for file_id={file_id} to {destination_path}")
+    log.debug(f"Total chunks downloaded: {chunk_count}")
+
+
+def upload_file(service, filepath, folder_id):
+    file_metadata = {"name": os.path.basename(filepath), "parents": [folder_id]}
+    media = MediaFileUpload(filepath, resumable=True)
+    service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+
+
+def upload_to_drive(drive, filepath, parent_id):
+    log.debug(f"Uploading file '{filepath}' to Drive folder ID '{parent_id}'")
+    file_metadata = {
+        "name": os.path.basename(filepath),
+        "parents": [parent_id],
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+    }
+    media = MediaFileUpload(filepath, mimetype="text/csv")
+    uploaded = (
+        drive.files()
+        .create(body=file_metadata, media_body=media, fields="id", supportsAllDrives=True)
+        .execute()
+    )
+    log.info(f"📄 Uploaded to Drive as Google Sheet: {filepath}")
+    log.debug(f"Uploaded file ID: {uploaded['id']}")
+
+    # TODO - move this to a sheets function
+    # After uploading, use gspread to open the sheet and check for 'sep=' in first row of all worksheets
+    gc = google_sheets.get_gspread_client()
+    spreadsheet = gc.open_by_key(uploaded["id"])
+    for sheet in spreadsheet.worksheets():
+        first_row = sheet.row_values(1)
+        if first_row and first_row[0].strip().lower().startswith("sep="):
+            sheet.delete_rows(1)
+
+    return uploaded["id"]
 
 
 def create_spreadsheet(
@@ -323,67 +392,6 @@ def remove_file_from_root(drive_service, file_id):
         drive_service.files().update(
             fileId=file_id, removeParents="root", fields="id, parents"
         ).execute()
-
-
-def get_all_subfolders(drive_service, parent_folder_id: str) -> List[Dict]:
-    """
-    Returns a list of all subfolders in the specified parent folder.
-    Supports Shared Drives.
-    """
-    log.info(
-        f"📂 Retrieving all subfolders in folder ID {parent_folder_id} (shared drives enabled)"
-    )
-    try:
-        query = f"'{parent_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-        folders = []
-        page_token = None
-        while True:
-            response = (
-                drive_service.files()
-                .list(
-                    q=query,
-                    spaces="drive",
-                    fields="nextPageToken, files(id, name)",
-                    pageToken=page_token,
-                    supportsAllDrives=True,
-                    includeItemsFromAllDrives=True,
-                )
-                .execute()
-            )
-            folders.extend(response.get("files", []))
-            page_token = response.get("nextPageToken", None)
-            if page_token is None:
-                break
-        log.info(f"📂 Found {len(folders)} subfolders under {parent_folder_id}")
-        return folders
-    except HttpError as error:
-        log.error(f"An error occurred while retrieving subfolders: {error}")
-        raise
-
-
-def get_files_in_folder(service, folder_id, name_contains=None, mime_type=None, trashed=False):
-    """Returns a list of files in a Google Drive folder, optionally filtering by name substring and MIME type."""
-    query = f"'{folder_id}' in parents"
-    if name_contains:
-        query += f" and name contains '{name_contains}'"
-    if mime_type:
-        query += f" and mimeType = '{mime_type}'"
-    if trashed is False:
-        query += " and trashed = false"
-
-    results = (
-        service.files()
-        .list(
-            q=query,
-            spaces="drive",
-            fields="files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        )
-        .execute()
-    )
-
-    return results.get("files", [])
 
 
 def find_or_create_file_by_name(
