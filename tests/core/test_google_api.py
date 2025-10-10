@@ -10,6 +10,7 @@ from googleapiclient.errors import HttpError
 
 # --- Credentials ---
 
+
 def test_load_credentials_env(monkeypatch):
     creds_mock = mock.Mock()
     monkeypatch.setenv("GOOGLE_CREDENTIALS_JSON", json.dumps({"foo": "bar"}))
@@ -55,6 +56,7 @@ def test_load_credentials_file_missing(monkeypatch):
 
 
 # --- Drive Helpers ---
+
 
 def test_get_drive_and_sheets_service(monkeypatch):
     creds = mock.Mock()
@@ -207,6 +209,7 @@ def test_find_file_by_name(monkeypatch, files_list, search_name, raises):
 
 # --- Sheets Helpers ---
 
+
 def test_delete_all_sheets_except(monkeypatch):
     sheets = mock.Mock()
     sheets.spreadsheets().get().execute.return_value = {
@@ -282,6 +285,7 @@ def test_delete_sheet_by_name_not_found(monkeypatch):
 
 # --- Formatting ---
 
+
 def test_apply_formatting_to_sheet_empty(monkeypatch):
     gc = mock.Mock()
     sh = mock.Mock()
@@ -306,6 +310,7 @@ def test_apply_formatting_to_sheet_with_data(monkeypatch):
 
 
 # --- Parsing ---
+
 
 def test_extract_date_from_filename():
     assert google_api.extract_date_from_filename("2025-01-01-file.csv") == "2025-01-01"
@@ -338,6 +343,7 @@ def test_parse_m3u_empty_file(tmp_path):
 
 
 # --- Download ---
+
 
 def test_download_file_never_completes(monkeypatch, tmp_path):
     drive = mock.Mock()
