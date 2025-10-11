@@ -1,8 +1,10 @@
 import logging
 import datetime
 
+
 # Create a shared logger instance
 logger = logging.getLogger("core")
+
 
 # Shortcut aliases
 debug = logger.debug
@@ -11,8 +13,7 @@ warning = logger.warning
 error = logger.error
 exception = logger.exception
 
-# logging.basicConfig(level=logging.DEBUG)
-# logging.basicConfig(level=logging.INFO)
+
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] [%(name)s.%(funcName)s] %(message)s",

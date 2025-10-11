@@ -61,7 +61,7 @@ def test_rename_music_file(monkeypatch, tmp_path):
     monkeypatch.setattr(os, "rename", lambda src, dst: dst)
 
     output_dir = tmp_path
-    new_path = renamer.rename_music_file(str(file_path), str(output_dir))
+    new_path = renamer.rename_music_file(str(file_path), str(output_dir), "__")
     assert "120__Song__Artist" in new_path
 
 
