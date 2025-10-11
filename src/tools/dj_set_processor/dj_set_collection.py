@@ -14,7 +14,7 @@ def generate_dj_set_collection():
     sheets_service = google_api.get_sheets_service()
 
     # Locate DJ_SETS folder (we assume the constant ID points to the shared drive folder or folder in shared drive)
-    parent_folder_id = config.DJ_SETS
+    parent_folder_id = config.DJ_SETS_FOLDER_ID
     log.info(f"📁 Using DJ_SETS folder: {parent_folder_id}")
 
     # Check for existing file or create new (create directly in the shared drive parent)

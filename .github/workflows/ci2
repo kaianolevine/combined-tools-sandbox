@@ -11,7 +11,7 @@ jobs:
     env:
       SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
       SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-      M3U_FOLDER_ID: 1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o
+      VDJ_HISTORY_FOLDER_ID: 1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o
 
     steps:
       - name: Checkout code

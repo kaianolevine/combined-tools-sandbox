@@ -25,12 +25,12 @@ def build_youtube_links(entries):
 def write_entries_to_sheet(sheets_service, entries, now):
     sheet = sheets_service.spreadsheets()
     log.info("Clearing old entries in sheet range A5:D...")
-    sheet.values().clear(spreadsheetId=config.SHEET_ID, range="A5:D").execute()
+    sheet.values().clear(spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID, range="A5:D").execute()
 
     if not entries:
         log.info("No entries to write. Writing NO_HISTORY message.")
         sheet.values().update(
-            spreadsheetId=config.SHEET_ID,
+            spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
             range="A5:B5",
             valueInputOption="RAW",
             body={"values": [[logger.format_date(now), config.NO_HISTORY]]},
@@ -39,7 +39,7 @@ def write_entries_to_sheet(sheets_service, entries, now):
 
     log.info("Writing %d entries to sheet...", len(entries))
     sheet.values().update(
-        spreadsheetId=config.SHEET_ID,
+        spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
         range=f"A5:C{5+len(entries)-1}",
         valueInputOption="RAW",
         body={"values": entries},
@@ -48,7 +48,7 @@ def write_entries_to_sheet(sheets_service, entries, now):
     links = build_youtube_links(entries)
     log.info("Writing YouTube links for entries...")
     sheet.values().update(
-        spreadsheetId=config.SHEET_ID,
+        spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
         range=f"D5:D{5+len(links)-1}",
         valueInputOption="USER_ENTERED",
         body={"values": links},
@@ -62,7 +62,11 @@ def write_entries_to_sheet(sheets_service, entries, now):
 def read_existing_entries(sheets_service, cutoff):
     sheet = sheets_service.spreadsheets()
     log.info("Reading existing entries from sheet...")
-    result = sheet.values().get(spreadsheetId=config.SHEET_ID, range="A5:C").execute()
+    result = (
+        sheet.values()
+        .get(spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID, range="A5:C")
+        .execute()
+    )
     values = result.get("values", [])
     existing_data = []
     for row in values:
@@ -81,7 +85,7 @@ def update_last_run_time(sheets_service, now):
     sheet = sheets_service.spreadsheets()
     log.info("Updating last run time in sheet...")
     sheet.values().update(
-        spreadsheetId=config.SHEET_ID,
+        spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
         range="A3",
         valueInputOption="RAW",
         body={"values": [[logger.format_date(now)]]},
@@ -101,9 +105,11 @@ def publish_history(drive_service, sheets_service):
     if not m3u_file:
         log.info("No .m3u files found. Clearing sheet and writing NO_HISTORY.")
         sheet = sheets_service.spreadsheets()
-        sheet.values().clear(spreadsheetId=config.SHEET_ID, range="A5:D").execute()
+        sheet.values().clear(
+            spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID, range="A5:D"
+        ).execute()
         sheet.values().update(
-            spreadsheetId=config.SHEET_ID,
+            spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
             range="A5:B5",
             valueInputOption="RAW",
             body={"values": [[logger.format_date(now), config.NO_HISTORY]]},

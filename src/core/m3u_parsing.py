@@ -35,11 +35,13 @@ def extract_tag_value(line, tag):
 
 
 def get_most_recent_m3u_file(drive_service):
-    log.info(f"Fetching most recent .m3u file from Drive folder ID: {config.FOLDER_ID}")
+    log.info(
+        f"Fetching most recent .m3u file from Drive folder ID: {config.VDJ_HISTORY_FOLDER_ID}"
+    )
     results = (
         drive_service.files()
         .list(
-            q=f"'{config.FOLDER_ID}' in parents and name contains '.m3u' and trashed = false",
+            q=f"'{config.VDJ_HISTORY_FOLDER_ID}' in parents and name contains '.m3u' and trashed = false",
             fields="files(id, name)",
         )
         .execute()

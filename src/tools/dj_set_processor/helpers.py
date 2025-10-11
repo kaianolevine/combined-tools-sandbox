@@ -72,7 +72,7 @@ def try_lock_folder(folder_name):
     Returns True if lock acquired, False if already locked.
     """
     drive_service = google_api.get_drive_client()
-    folder_id = config.DJ_SETS
+    folder_id = config.DJ_SETS_FOLDER_ID
     summary_folder_id = drive.get_or_create_subfolder(drive_service, folder_id, folder_name)
     query = (
         f"'{summary_folder_id}' in parents and name='{config.LOCK_FILE_NAME}' and trashed=false"
@@ -97,7 +97,7 @@ def release_folder_lock(folder_name):
     Remove the lock file to release the lock.
     """
     drive_service = google_api.get_drive_client()
-    folder_id = config.DJ_SETS
+    folder_id = config.DJ_SETS_FOLDER_ID
     summary_folder_id = drive.get_or_create_subfolder(drive_service, folder_id, folder_name)
     query = (
         f"'{summary_folder_id}' in parents and name='{config.LOCK_FILE_NAME}' and trashed=false"

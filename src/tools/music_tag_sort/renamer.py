@@ -245,4 +245,8 @@ def generate_filename(metadata: Dict[str, str], config: Dict) -> Optional[str]:
 
 
 if __name__ == "__main__":
-    process_drive_folder(config.SOURCE_FOLDER_ID, config.DEST_FOLDER_ID, config.SEP_CHARACTERS)
+    process_drive_folder(
+        config.MUSIC_UPLOAD_SOURCE_FOLDER_ID,
+        config.MUSIC_TAGGING_OUTPUT_FOLDER_ID,
+        config.SEP_CHARACTERS,
+    )

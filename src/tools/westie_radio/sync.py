@@ -12,7 +12,7 @@ from core import logger as log
 
 log = log.get_logger()
 
-spreadsheet_id = config.SPREADSHEET_ID
+spreadsheet_id = config.HISTORY_TO_SPOTIFY_LOGGING
 
 
 def initialize_spreadsheet():
@@ -52,10 +52,10 @@ def main():
     # Ensure necessary sheets and remove default 'Sheet1' if present
     initialize_spreadsheet()
     # --- Google Drive: find and download all .m3u files ---
-    folder_id = config.M3U_FOLDER_ID
+    folder_id = config.VDJ_HISTORY_FOLDER_ID
     if not folder_id:
-        raise ValueError("Missing environment variable: M3U_FOLDER_ID")
-    sheets.log_debug(spreadsheet_id, f"📁 Loaded M3U_FOLDER_ID: {folder_id}")
+        raise ValueError("Missing environment variable: VDJ_HISTORY_FOLDER_ID")
+    sheets.log_debug(spreadsheet_id, f"📁 Loaded VDJ_HISTORY_FOLDER_ID: {folder_id}")
 
     drive_service = drive.get_drive_service()
     all_files = drive.list_files_in_folder(drive_service, folder_id)

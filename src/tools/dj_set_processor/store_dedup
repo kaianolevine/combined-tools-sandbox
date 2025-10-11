@@ -7,7 +7,7 @@ def deduplicate_summaries(drive_service, sheets_service):
         return
 
     try:
-        summary_folder_id = google_api.get_or_create_subfolder(drive_service, config.DJ_SETS, config.SUMMARY_FOLDER_NAME)
+        summary_folder_id = google_api.get_or_create_subfolder(drive_service, config.DJ_SETS_FOLDER_ID, config.SUMMARY_FOLDER_NAME)
         files = google_api.list_files_in_folder(drive_service, summary_folder_id)
 
         for file in files:
@@ -231,7 +231,7 @@ def deduplicate_complete_summary():
         return
 
     try:
-        parent_folder_id = config.DJ_SETS
+        parent_folder_id = config.DJ_SETS_FOLDER_ID
         summary_folder_id = helpers.get_or_create_subfolder(parent_folder_id, config.SUMMARY_FOLDER_NAME)
         files = google_api.list_files_in_folder(summary_folder_id)
 

@@ -228,7 +228,7 @@ def generate_complete_summary():
     # Step 0: Get or create 'Summary' folder inside parent folder DJ_SETS
     try:
         summary_folder_id = google_api.get_or_create_subfolder(
-            drive_service, config.DJ_SETS, "Summary"
+            drive_service, config.DJ_SETS_FOLDER_ID, "Summary"
         )
     except HttpError as e:
         log.error(f"Failed to get or create 'Summary' folder: {e}")
