@@ -34,7 +34,7 @@ def initialize_spreadsheet():
             title = sheet_info.get("properties", {}).get("title", "")
             sheet_id = sheet_info.get("properties", {}).get("sheetId", None)
             if title == "Sheet1" and sheet_id is not None:
-                sheets.delete_sheet_by_id(sheets.get_sheets_service(), spreadsheet_id, "Sheet1")
+                sheets.delete_sheet_by_name(sheets.get_sheets_service(), spreadsheet_id, "Sheet1")
                 sheets.log_debug(spreadsheet_id, "🗑 Deleted default 'Sheet1'.")
     except HttpError as e:
         sheets.log_debug(spreadsheet_id, f"⚠️ Failed to delete 'Sheet1': {e}")
@@ -57,7 +57,8 @@ def main():
         raise ValueError("Missing environment variable: M3U_FOLDER_ID")
     sheets.log_debug(spreadsheet_id, f"📁 Loaded M3U_FOLDER_ID: {folder_id}")
 
-    all_files = drive.list_files_in_folder(folder_id)
+    drive_service = drive.get_drive_service()
+    all_files = drive.list_files_in_folder(drive_service, folder_id)
     m3u_files = sorted(
         [f for f in all_files if f["name"].lower().endswith(".m3u")],
         key=lambda f: f["name"],
@@ -77,7 +78,7 @@ def main():
         date = drive.extract_date_from_filename(filename)
         sheets.log_info(spreadsheet_id, f"🎶 Processing file: {filename}")
 
-        drive.download_file(file_id, filename)
+        drive.download_file(drive_service, file_id, filename)
         songs = m3u.parse_m3u(sheets, filename, spreadsheet_id)
 
         last_extvdj_line = processed_map.get(filename)

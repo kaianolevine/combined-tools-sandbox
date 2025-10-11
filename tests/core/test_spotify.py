@@ -3,14 +3,15 @@
 import pytest
 from unittest import mock
 import core.spotify as spotify
+import config
 
 
 def test_get_spotify_client_from_refresh_success(monkeypatch):
     # Patch config values
-    monkeypatch.setattr(spotify.config, "SPOTIFY_CLIENT_ID", "id")
-    monkeypatch.setattr(spotify.config, "SPOTIFY_CLIENT_SECRET", "secret")
-    monkeypatch.setattr(spotify.config, "SPOTIFY_REDIRECT_URI", "uri")
-    monkeypatch.setattr(spotify.config, "SPOTIFY_REFRESH_TOKEN", "refresh")
+    monkeypatch.setattr(config, "SPOTIFY_CLIENT_ID", "id")
+    monkeypatch.setattr(config, "SPOTIFY_CLIENT_SECRET", "secret")
+    monkeypatch.setattr(config, "SPOTIFY_REDIRECT_URI", "uri")
+    monkeypatch.setattr(config, "SPOTIFY_REFRESH_TOKEN", "refresh")
 
     fake_auth = mock.Mock()
     fake_auth.refresh_access_token.return_value = {"access_token": "tok"}
@@ -22,10 +23,10 @@ def test_get_spotify_client_from_refresh_success(monkeypatch):
 
 
 def test_get_spotify_client_from_refresh_missing(monkeypatch):
-    monkeypatch.setattr(spotify.config, "SPOTIFY_CLIENT_ID", None)
-    monkeypatch.setattr(spotify.config, "SPOTIFY_CLIENT_SECRET", "secret")
-    monkeypatch.setattr(spotify.config, "SPOTIFY_REDIRECT_URI", "uri")
-    monkeypatch.setattr(spotify.config, "SPOTIFY_REFRESH_TOKEN", "refresh")
+    monkeypatch.setattr(config, "SPOTIFY_CLIENT_ID", None)
+    monkeypatch.setattr(config, "SPOTIFY_CLIENT_SECRET", "secret")
+    monkeypatch.setattr(config, "SPOTIFY_REDIRECT_URI", "uri")
+    monkeypatch.setattr(config, "SPOTIFY_REFRESH_TOKEN", "refresh")
     with pytest.raises(ValueError):
         spotify.get_spotify_client_from_refresh()
 
@@ -49,7 +50,7 @@ def test_search_track_not_found(monkeypatch):
 
 
 def test_add_tracks_to_playlist_success(monkeypatch, capsys):
-    monkeypatch.setattr(spotify.config, "SPOTIFY_PLAYLIST_ID", "playlist123")
+    monkeypatch.setattr(config, "SPOTIFY_PLAYLIST_ID", "playlist123")
     fake_sp = mock.Mock()
     monkeypatch.setattr(spotify, "get_spotify_client_from_refresh", lambda: fake_sp)
 
@@ -60,20 +61,20 @@ def test_add_tracks_to_playlist_success(monkeypatch, capsys):
 
 
 def test_add_tracks_to_playlist_missing_id(monkeypatch):
-    monkeypatch.setattr(spotify.config, "SPOTIFY_PLAYLIST_ID", None)
+    monkeypatch.setattr(config, "SPOTIFY_PLAYLIST_ID", None)
     with pytest.raises(EnvironmentError):
         spotify.add_tracks_to_playlist(["uri"])
 
 
 def test_add_tracks_to_playlist_empty(monkeypatch, capsys):
-    monkeypatch.setattr(spotify.config, "SPOTIFY_PLAYLIST_ID", "playlist123")
+    monkeypatch.setattr(config, "SPOTIFY_PLAYLIST_ID", "playlist123")
     spotify.add_tracks_to_playlist([])
     out, _ = capsys.readouterr()
     assert "No tracks to add." in out
 
 
 def test_trim_playlist_to_limit_within_limit(monkeypatch):
-    monkeypatch.setattr(spotify.config, "SPOTIFY_PLAYLIST_ID", "playlist123")
+    monkeypatch.setattr(config, "SPOTIFY_PLAYLIST_ID", "playlist123")
     fake_sp = mock.Mock()
     fake_sp.playlist_items.return_value = {"items": [], "total": 5}
     monkeypatch.setattr(spotify, "get_spotify_client_from_refresh", lambda: fake_sp)
@@ -83,7 +84,7 @@ def test_trim_playlist_to_limit_within_limit(monkeypatch):
 
 
 def test_trim_playlist_to_limit_exceeds(monkeypatch, capsys):
-    monkeypatch.setattr(spotify.config, "SPOTIFY_PLAYLIST_ID", "playlist123")
+    monkeypatch.setattr(config, "SPOTIFY_PLAYLIST_ID", "playlist123")
     fake_sp = mock.Mock()
     fake_sp.playlist_items.return_value = {
         "items": [
@@ -104,6 +105,6 @@ def test_trim_playlist_to_limit_exceeds(monkeypatch, capsys):
 
 
 def test_trim_playlist_to_limit_missing_id(monkeypatch):
-    monkeypatch.setattr(spotify.config, "SPOTIFY_PLAYLIST_ID", None)
+    monkeypatch.setattr(config, "SPOTIFY_PLAYLIST_ID", None)
     with pytest.raises(EnvironmentError):
         spotify.trim_playlist_to_limit(limit=5)

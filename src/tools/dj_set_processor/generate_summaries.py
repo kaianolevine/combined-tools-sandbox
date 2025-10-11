@@ -5,7 +5,7 @@ from collections import OrderedDict
 from googleapiclient.errors import HttpError
 
 import core.google_api as google_api
-import tools.dj_set_processor.config as config
+import config
 from core import logger as log
 
 log = log.get_logger()

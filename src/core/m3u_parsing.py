@@ -3,7 +3,7 @@ import pytz
 import datetime
 from googleapiclient.http import MediaIoBaseDownload
 from core import logger as log
-from tools.live_music_history import config
+import config
 
 log = log.get_logger()
 

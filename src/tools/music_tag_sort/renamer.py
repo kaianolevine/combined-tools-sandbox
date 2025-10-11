@@ -7,7 +7,7 @@ from mutagen.mp4 import MP4
 from mutagen.easyid3 import EasyID3
 import core.google_drive as drive
 from core import logger as log
-from tools.music_tag_sort import config
+import config
 import tempfile
 from typing import List, Optional
 

@@ -1,6 +1,6 @@
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth, CacheHandler
-from tools.westie_radio import config
+import config
 from core import logger as log
 
 log = log.get_logger()

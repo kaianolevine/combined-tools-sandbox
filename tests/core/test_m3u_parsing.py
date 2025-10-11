@@ -1,6 +1,7 @@
 import pytest
 from unittest import mock
 from core import m3u_parsing
+import config
 
 
 @pytest.fixture
@@ -43,7 +44,7 @@ def test_get_most_recent_m3u_file_success(monkeypatch, mock_drive_service):
     mock_drive_service.files.return_value.list.return_value.execute.return_value = {
         "files": [{"id": "1", "name": "2024-01-01.m3u"}, {"id": "2", "name": "2024-01-02.m3u"}]
     }
-    monkeypatch.setattr(m3u_parsing.config, "FOLDER_ID", "folder123")
+    monkeypatch.setattr(config, "FOLDER_ID", "folder123")
 
     result = m3u_parsing.get_most_recent_m3u_file(mock_drive_service)
     assert result["name"] == "2024-01-02.m3u"
@@ -51,7 +52,7 @@ def test_get_most_recent_m3u_file_success(monkeypatch, mock_drive_service):
 
 def test_get_most_recent_m3u_file_empty(monkeypatch, mock_drive_service):
     mock_drive_service.files.return_value.list.return_value.execute.return_value = {"files": []}
-    monkeypatch.setattr(m3u_parsing.config, "FOLDER_ID", "folder123")
+    monkeypatch.setattr(config, "FOLDER_ID", "folder123")
 
     result = m3u_parsing.get_most_recent_m3u_file(mock_drive_service)
     assert result is None
@@ -92,7 +93,7 @@ def test_download_m3u_file_partial_progress(monkeypatch, mock_drive_service):
 
 
 def test_parse_m3u_lines_single_entry(monkeypatch):
-    monkeypatch.setattr(m3u_parsing.config, "TIMEZONE", "UTC")
+    monkeypatch.setattr(config, "TIMEZONE", "UTC")
     lines = [
         "#EXTVDJ:<time>12:00</time><title>Track 1</title><artist>Artist</artist>",
     ]
@@ -102,7 +103,7 @@ def test_parse_m3u_lines_single_entry(monkeypatch):
 
 
 def test_parse_m3u_lines_rollover(monkeypatch):
-    monkeypatch.setattr(m3u_parsing.config, "TIMEZONE", "UTC")
+    monkeypatch.setattr(config, "TIMEZONE", "UTC")
     lines = [
         "#EXTVDJ:<time>23:59</time><title>Old</title><artist>A</artist>",
         "#EXTVDJ:<time>00:01</time><title>New</title><artist>A</artist>",
@@ -114,7 +115,7 @@ def test_parse_m3u_lines_rollover(monkeypatch):
 
 
 def test_parse_m3u_lines_skips_duplicates(monkeypatch):
-    monkeypatch.setattr(m3u_parsing.config, "TIMEZONE", "UTC")
+    monkeypatch.setattr(config, "TIMEZONE", "UTC")
     existing = set()
     lines = [
         "#EXTVDJ:<time>12:00</time><title>Song</title><artist>Artist</artist>",
@@ -125,7 +126,7 @@ def test_parse_m3u_lines_skips_duplicates(monkeypatch):
 
 
 def test_parse_m3u_lines_missing_tags(monkeypatch):
-    monkeypatch.setattr(m3u_parsing.config, "TIMEZONE", "UTC")
+    monkeypatch.setattr(config, "TIMEZONE", "UTC")
     lines = ["#EXTVDJ:<time></time><title></title>"]
     result = m3u_parsing.parse_m3u_lines(lines, set(), "2025-01-01")
     assert result == []

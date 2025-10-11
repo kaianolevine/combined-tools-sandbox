@@ -4,7 +4,7 @@ import time
 import re
 
 import core._google_credentials as google_api
-import tools.dj_set_processor.config as config
+import config
 import core.google_drive as drive
 from difflib import SequenceMatcher
 from typing import Tuple
