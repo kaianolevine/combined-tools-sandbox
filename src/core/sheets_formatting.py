@@ -62,7 +62,7 @@ def set_values(sheets_service, spreadsheet_id, sheet_name, start_row, start_col,
     end_row = start_row + len(values) - 1
     end_col = start_col + len(values[0]) - 1 if values else start_col
     range_name = f"{sheet_name}!R{start_row}C{start_col}:R{end_row}C{end_col}"
-    body = {"values": values}
+    body = {"values": [[f"'{str(cell)}" for cell in row] for row in values]}
     sheets_service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id, range=range_name, valueInputOption="RAW", body=body
     ).execute()
@@ -160,9 +160,7 @@ def set_number_format(
                     "startColumnIndex": start_col - 1,
                     "endColumnIndex": end_col,
                 },
-                "cell": {
-                    "userEnteredFormat": {"numberFormat": {"type": "TEXT", "pattern": format_str}}
-                },
+                "cell": {"userEnteredFormat": {"numberFormat": {"type": "TEXT"}}},
                 "fields": "userEnteredFormat.numberFormat",
             }
         }
@@ -171,23 +169,70 @@ def set_number_format(
     sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 
-def auto_resize_columns(service, spreadsheet_id, sheet_id, end_col, start_col=1):
-    """Automatically resize columns in a given sheet range."""
-    body = {
-        "requests": [
-            {
-                "autoResizeDimensions": {
-                    "dimensions": {
-                        "sheetId": sheet_id,
-                        "dimension": "COLUMNS",
-                        "startIndex": start_col - 1,
-                        "endIndex": end_col,
+def auto_resize_columns(
+    service, spreadsheet_id, sheet_id, start_col: int = 1, end_col: int | None = None
+):
+    """Automatically resize columns in a given sheet range.
+
+    Args:
+        service: Google Sheets API service instance.
+        spreadsheet_id: ID of the spreadsheet.
+        sheet_id: Sheet ID within the spreadsheet.
+        start_col: 1-based first column to resize (default 1).
+        end_col: 1-based last column to resize (inclusive). If None, will resize just start_col.
+
+    This function is defensive: it validates and normalizes the start/end column values,
+    converts them to the zero-based, end-exclusive indices expected by the Sheets API,
+    and swaps the bounds if they were passed in the wrong order. If the API call fails
+    with an HttpError, it will log the error and re-raise.
+    """
+    try:
+        # Normalize inputs to integers and ensure at least 1
+        start_col = int(start_col) if start_col is not None else 1
+        if start_col < 1:
+            log.warning(f"start_col < 1 ({start_col}) — clamping to 1")
+            start_col = 1
+
+        if end_col is None:
+            end_col = start_col
+        else:
+            end_col = int(end_col)
+            if end_col < 1:
+                log.warning(f"end_col < 1 ({end_col}) — clamping to 1")
+                end_col = 1
+
+        # If bounds are reversed, swap them (caller may have passed in reversed args)
+        if end_col < start_col:
+            log.warning(
+                f"auto_resize_columns received end_col < start_col ({end_col} < {start_col}); swapping bounds"
+            )
+            start_col, end_col = end_col, start_col
+
+        # Convert to zero-based, end-exclusive indices for Sheets API
+        start_index = start_col - 1
+        end_index = end_col  # endIndex in the API is exclusive and zero-based
+
+        body = {
+            "requests": [
+                {
+                    "autoResizeDimensions": {
+                        "dimensions": {
+                            "sheetId": sheet_id,
+                            "dimension": "COLUMNS",
+                            "startIndex": start_index,
+                            "endIndex": end_index,
+                        }
                     }
                 }
-            }
-        ]
-    }
-    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+            ]
+        }
+
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+    except HttpError as e:
+        log.error(
+            f"Auto-resize columns failed for sheet {sheet_id} cols {start_col}-{end_col}: {e}"
+        )
+        raise
 
 
 def update_sheet_values(sheets_service, spreadsheet_id, sheet_name, values):
@@ -276,11 +321,7 @@ def set_sheet_formatting(
                         "startColumnIndex": 0,
                         "endColumnIndex": total_cols,
                     },
-                    "cell": {
-                        "userEnteredFormat": {
-                            "numberFormat": {"type": "TEXT", "pattern": "@STRING@"}
-                        }
-                    },
+                    "cell": {"userEnteredFormat": {"numberFormat": {"type": "TEXT"}}},
                     "fields": "userEnteredFormat.numberFormat",
                 }
             }

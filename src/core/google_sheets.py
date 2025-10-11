@@ -14,11 +14,11 @@ def get_gspread_client():
     return _google_credentials.get_gspread_client()
 
 
-def get_or_create_sheet(spreadsheet_id: str, sheet_name: str) -> None:
+def get_or_create_sheet(service, spreadsheet_id: str, sheet_name: str) -> None:
     log.debug(
         f"get_or_create_sheet called with spreadsheet_id={spreadsheet_id}, sheet_name={sheet_name}"
     )
-    service = get_sheets_service()
+
     sheets_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     sheet_titles = [s["properties"]["title"] for s in sheets_metadata.get("sheets", [])]
     log.debug(f"Existing sheet titles: {sheet_titles}")
@@ -33,9 +33,9 @@ def get_or_create_sheet(spreadsheet_id: str, sheet_name: str) -> None:
         log.debug(f"Sheet '{sheet_name}' already exists; no creation needed.")
 
 
-def read_sheet(spreadsheet_id, range_name):
+def read_sheet(service, spreadsheet_id, range_name):
     log.debug(f"read_sheet called with spreadsheet_id={spreadsheet_id}, range_name={range_name}")
-    service = get_sheets_service()
+
     log.debug(f"Calling Sheets API with spreadsheetId={spreadsheet_id}, range={range_name}")
     result = (
         service.spreadsheets()
@@ -48,7 +48,7 @@ def read_sheet(spreadsheet_id, range_name):
     return values
 
 
-def write_sheet(spreadsheet_id, range_name, values=None):
+def write_sheet(service, spreadsheet_id, range_name, values=None):
     log.debug(
         f"write_sheet called with spreadsheet_id={spreadsheet_id}, range_name={range_name}, values length={len(values) if values else 0}"
     )
@@ -57,7 +57,7 @@ def write_sheet(spreadsheet_id, range_name, values=None):
         log.debug(f"Preview of values to write: {preview}")
     else:
         log.debug("No values provided to write.")
-    service = get_sheets_service()
+
     log.debug(f"Calling Sheets API with spreadsheetId={spreadsheet_id}, range={range_name}")
     body = {"values": values}
     result = (
@@ -75,11 +75,11 @@ def write_sheet(spreadsheet_id, range_name, values=None):
     return result
 
 
-def append_rows(spreadsheet_id: str, range_name: str, values: list) -> None:
+def append_rows(service, spreadsheet_id: str, range_name: str, values: list) -> None:
     log.debug(
         f"append_rows called with spreadsheet_id={spreadsheet_id}, range_name={range_name}, number of rows={len(values)}"
     )
-    service = get_sheets_service()
+
     body = {"values": values}
     log.debug("Calling Sheets API to append rows...")
     result = (
@@ -98,39 +98,40 @@ def append_rows(spreadsheet_id: str, range_name: str, values: list) -> None:
 
 
 # Utility logging functions to handle writing to specific tabs
-def log_debug(spreadsheet_id: str, message: str):
+def log_debug(service, spreadsheet_id: str, message: str):
     log.debug(f"log_debug called with spreadsheet_id={spreadsheet_id}, message={message}")
-    get_or_create_sheet(spreadsheet_id, "Debug")
+    get_or_create_sheet(service, spreadsheet_id, "Debug")
     log.debug(f"Logging to Debug: {message}")
-    append_rows(spreadsheet_id, "Debug!A1", [[message]])
+    append_rows(service, spreadsheet_id, "Debug!A1", [[message]])
 
 
-def log_info(spreadsheet_id: str, message: str):
+def log_info(service, spreadsheet_id: str, message: str):
     log.debug(f"log_info called with spreadsheet_id={spreadsheet_id}, message={message}")
-    get_or_create_sheet(spreadsheet_id, "Info")
+    get_or_create_sheet(service, spreadsheet_id, "Info")
     log.info(f"Logging to Info: {message}")
-    append_rows(spreadsheet_id, "Info!A1", [[message]])
+    append_rows(service, spreadsheet_id, "Info!A1", [[message]])
 
 
 # Ensure all required sheet tabs exist in a spreadsheet
-def ensure_sheet_exists(spreadsheet_id: str, sheet_name: str, headers: list[str] = None) -> None:
+def ensure_sheet_exists(
+    service, spreadsheet_id: str, sheet_name: str, headers: list[str] = None
+) -> None:
     log.debug(
         f"ensure_sheet_exists called with spreadsheet_id={spreadsheet_id}, sheet_name={sheet_name}, headers={headers}"
     )
-    get_or_create_sheet(spreadsheet_id, sheet_name)
+    get_or_create_sheet(service, spreadsheet_id, sheet_name)
     if headers:
-        existing = read_sheet(spreadsheet_id, f"{sheet_name}!1:1")
+        existing = read_sheet(service, spreadsheet_id, f"{sheet_name}!1:1")
         if not existing:
-            write_sheet(spreadsheet_id, f"{sheet_name}!A1", [headers])
+            write_sheet(service, spreadsheet_id, f"{sheet_name}!A1", [headers])
             log.info(f"Wrote headers to sheet '{sheet_name}': {headers}")
         else:
             log.debug(f"Headers already present in sheet '{sheet_name}'; no write needed.")
 
 
 # Function to fetch spreadsheet metadata
-def get_sheet_metadata(spreadsheet_id: str):
+def get_sheet_metadata(service, spreadsheet_id: str):
     log.debug(f"get_sheet_metadata called with spreadsheet_id={spreadsheet_id}")
-    service = get_sheets_service()
     log.debug(f"Fetching spreadsheet metadata for ID={spreadsheet_id}")
     metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     log.info(f"Metadata keys available: {list(metadata.keys())}")
@@ -170,6 +171,7 @@ def update_row(spreadsheet_id: str, range_: str, values: list[list[str]]):
 
 
 def sort_sheet_by_column(
+    service,
     spreadsheet_id: str,
     sheet_name: str,
     column_index: int,
@@ -194,7 +196,6 @@ def sort_sheet_by_column(
         f"sheet_name={sheet_name}, column_index={column_index}, ascending={ascending}, "
         f"start_row={start_row}, end_row={end_row}"
     )
-    service = get_sheets_service()
 
     # Get sheet ID from metadata
     metadata = get_sheet_metadata(spreadsheet_id)

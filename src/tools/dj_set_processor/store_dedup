@@ -1,229 +1,3 @@
-def deduplicate_summaries(drive_service, sheets_service):
-    config.logger.info("🚀 Starting deduplicate_summaries()")
-    start_time = time.time()
-    MAX_RUNTIME = 5 * 60  # 5 minutes in seconds
-
-    if not helpers.try_lock_folder(config.SUMMARY_FOLDER_NAME):
-        return
-
-    try:
-        summary_folder_id = google_api.get_or_create_subfolder(drive_service, config.DJ_SETS_FOLDER_ID, config.SUMMARY_FOLDER_NAME)
-        files = google_api.list_files_in_folder(drive_service, summary_folder_id)
-
-        for file in files:
-            elapsed = time.time() - start_time
-            if elapsed > MAX_RUNTIME:
-                config.logger.info("⏳ Time limit reached. Exiting.")
-                break
-
-            name = file["name"]
-            mime_type = file["mimeType"]
-            match = re.match(r"^_pending_(\d{4}) Summary$", name)
-            if not match or mime_type != "application/vnd.google-apps.spreadsheet":
-                continue
-
-            try:
-                config.logger.info(f"📄 Processing: {name}")
-                spreadsheet_id = file["id"]
-                # Get sheet metadata to find first sheet ID and name
-                spreadsheet = (
-                    sheets_service.spreadsheets()
-                    .get(spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title))")
-                    .execute()
-                )
-                sheets = spreadsheet.get("sheets", [])
-                if not sheets:
-                    config.logger.warning(f"⚠️ No sheets found in {name}")
-                    continue
-                first_sheet = sheets[0]
-                sheet_id = first_sheet["properties"]["sheetId"]
-                sheet_name = first_sheet["properties"]["title"]
-
-                data = google_api.get_sheet_values(spreadsheet_id, sheet_name)
-                if len(data) < 2:
-                    config.logger.warning(f"⚠️ Skipping empty or header-only file: {name}")
-                    continue
-
-                header = data[0]
-                rows = [row for row in data[1:] if "".join(row).strip() != ""]
-
-                dedup_result = deduplicate_rows_with_soft_match(
-                    [{"header": header, "rows": rows}], header
-                )
-                headers = dedup_result["headers"]
-                rows_with_meta = dedup_result["rowsWithMeta"]
-                final_header = headers + ["Count"]
-                try:
-                    title_index = headers.index("Title")
-                except ValueError:
-                    title_index = -1
-                try:
-                    comment_index = headers.index("Comment")
-                except ValueError:
-                    comment_index = -1
-
-                with_count = [r for r in rows_with_meta if r["count"] > 0]
-
-                soft_matches = sorted(
-                    [r for r in with_count if r.get("match") == "soft"],
-                    key=lambda r: str(r["data"][title_index]) if title_index >= 0 else "",
-                )
-                others = sorted(
-                    [r for r in with_count if r.get("match") != "soft"],
-                    key=lambda r: str(r["data"][title_index]) if title_index >= 0 else "",
-                )
-
-                final_rows = [final_header]
-                backgrounds = [["#ffffff" for _ in final_header]]
-
-                def should_exclude(comment):
-                    lc = (comment or "").lower()
-                    return "routine |" in lc or "the open 2024" in lc or "fx |" in lc
-
-                def add_rows(lst):
-                    for item in lst:
-                        data_row = item["data"]
-                        count = item["count"]
-                        match_type = item.get("match", "")
-                        comment = data_row[comment_index] if comment_index >= 0 else ""
-                        if should_exclude(comment):
-                            continue
-                        final_rows.append(data_row + [count])
-                        bg = ["#ffffff"] * len(final_header)
-                        if match_type == "soft":
-                            for i in range(len(headers)):
-                                bg[i] = "#fff3b0"
-                        backgrounds.append(bg)
-
-                add_rows(soft_matches)
-                add_rows(others)
-
-                # Clear sheet
-                google_api.clear_sheet(sheets_service, spreadsheet_id, sheet_id)
-
-                # Update values
-                google_api.update_sheet_values(spreadsheet_id, sheet_name, final_rows)
-
-                # Apply formatting
-                google_api.set_sheet_formatting(
-                    spreadsheet_id=spreadsheet_id,
-                    sheet_id=sheet_id,
-                    header_row_count=1,
-                    total_rows=len(final_rows),
-                    total_cols=len(final_rows[0]),
-                    backgrounds=backgrounds,
-                )
-
-                # Rename file
-                new_name = f"{match.group(1)} Summary"
-                drive_service.files().update(
-                    fileId=spreadsheet_id, body={"name": new_name}
-                ).execute()
-                config.logger.info(f"✏️ Renamed to: {new_name}")
-
-                time.sleep(10)  # Sleep 10 seconds
-                config.logger.info(f"✅ Deduplicated: {new_name}")
-
-            except Exception as e:
-                config.logger.error(f"❌ Error deduplicating {name}: {e}")
-
-    finally:
-        helpers.release_folder_lock(config.SUMMARY_FOLDER_NAME)
-        config.logger.info("🏁 deduplicate_summaries complete.")
-
-
-def deduplicate_rows_with_soft_match(sheet_data, all_headers):
-    dedup_fields = ["Title", "Remix", "Artist", "Comment", "Genre", "Year", "BPM"]
-    desired_order = ["Title", "Remix", "Artist", "Comment", "Genre", "Year", "BPM", "Length"]
-
-    lower_header_map = {h.lower(): h for h in all_headers}
-
-    headers = [lower_header_map[h.lower()] for h in desired_order if h.lower() in lower_header_map]
-
-    primary_fields = [f for f in ["Title", "Remix", "Artist"] if f in headers]
-    secondary_fields = [f for f in dedup_fields if f not in primary_fields and f in headers]
-
-    primary_indices = [{"field": f, "index": headers.index(f)} for f in primary_fields]
-    secondary_indices = [{"field": f, "index": headers.index(f)} for f in secondary_fields]
-
-    deduped_rows = []
-
-    for sheet in sheet_data:
-        header = sheet["header"]
-        rows = sheet["rows"]
-        header_map = {h.lower(): i for i, h in enumerate(header)}
-
-        for row in rows:
-            aligned = [
-                row[header_map.get(h.lower(), "")] if header_map.get(h.lower(), "") != "" else ""
-                for h in headers
-            ]
-            # Fix for possible missing keys:
-            aligned = []
-            for h in headers:
-                idx = header_map.get(h.lower())
-                if idx is not None and idx < len(row):
-                    aligned.append(row[idx])
-                else:
-                    aligned.append("")
-
-            matched = False
-            for group in deduped_rows:
-                other = group["data"]
-                matches_all_primary = all(
-                    aligned[p["index"]] == other[p["index"]] for p in primary_indices
-                )
-                if not matches_all_primary:
-                    continue
-                secondary_match = all(
-                    (
-                        not aligned[s["index"]]
-                        or not other[s["index"]]
-                        or aligned[s["index"]] == other[s["index"]]
-                    )
-                    for s in secondary_indices
-                )
-                if secondary_match:
-                    group["count"] += 1
-                    matched = True
-                    break
-            if not matched:
-                deduped_rows.append({"data": aligned, "count": 1, "match": ""})
-
-    # Soft match flagging
-    all_indices = primary_indices + secondary_indices
-    for i in range(len(deduped_rows)):
-        for j in range(i + 1, len(deduped_rows)):
-            a = deduped_rows[i]
-            b = deduped_rows[j]
-            shared = helpers.get_shared_filled_fields(a["data"], b["data"], all_indices)
-            score = helpers.get_dedup_match_score(a["data"], b["data"], all_indices)
-
-            all_similar = all(
-                (
-                    not str(a["data"][idx["index"]])
-                    or not str(b["data"][idx["index"]])
-                    or helpers.string_similarity(
-                        str(a["data"][idx["index"]]), str(b["data"][idx["index"]])
-                    )
-                    >= 0.5
-                    or helpers.clean_title(str(a["data"][idx["index"]]))
-                    == helpers.clean_title(str(b["data"][idx["index"]]))
-                )
-                for idx in all_indices
-            )
-
-            required_shared = 2 if len(primary_indices) >= 3 else 1
-            if score >= 0.5 and shared >= required_shared and all_similar:
-                if not a["match"]:
-                    a["match"] = "soft"
-                if not b["match"]:
-                    b["match"] = "soft"
-
-    return {"headers": headers, "rowsWithMeta": deduped_rows}
-
-
-
 def deduplicate_complete_summary():
     config.logger.info("🚀 Starting deduplicate_complete_summary()")
 
@@ -359,6 +133,208 @@ def deduplicate_complete_summary():
         helpers.release_folder_lock(config.SUMMARY_FOLDER_NAME)
         config.logger.info("🏁 deduplicate_complete_summary complete.")
 
+def generate_complete_summary():
+    """
+    Generates a consolidated 'Complete Summary' spreadsheet from yearly summary spreadsheets.
+    """
+    try:
+        drive_service = google_drive.get_drive_service()
+        sheets_service = google_sheets.get_sheets_service()
+    except Exception as e:
+        log.error(f"Authentication failed: {e}")
+        return
+
+    # Step 0: Get or create 'Summary' folder inside parent folder DJ_SETS
+    try:
+        summary_folder_id = google_drive.get_or_create_subfolder(
+            drive_service, config.DJ_SETS_FOLDER_ID, "Summary"
+        )
+    except HttpError as e:
+        log.error(f"Failed to get or create 'Summary' folder: {e}")
+        return
+
+    # List all files in summary folder
+    try:
+        summary_files = google_drive.list_files_in_folder(drive_service, summary_folder_id)
+    except HttpError as e:
+        log.error(f"Failed to list files in Summary folder: {e}")
+        return
+
+    # Determine output spreadsheet name
+    output_name = "_pending_Complete Summary"
+    # Check if any file with name containing "complete summary" exists (case insensitive)
+    for f in summary_files:
+        if (
+            f["mimeType"] == "application/vnd.google-apps.spreadsheet"
+            and "complete summary" in f["name"].lower()
+        ):
+            log.warning(f'⚠️ Existing "Complete Summary" detected — using name: {output_name}')
+            break
+
+    # Check if output file already exists
+    existing_file = google_drive.get_file_by_name(drive_service, summary_folder_id, output_name)
+    if existing_file:
+        master_file_id = existing_file["id"]
+        log.info(f'Using existing master file "{output_name}" with ID: {master_file_id}')
+    else:
+        # Create new spreadsheet
+        master_file_id = google_drive.create_spreadsheet(
+            drive_service, output_name, summary_folder_id
+        )
+
+    # Open master spreadsheet info
+    try:
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=master_file_id).execute()
+    except HttpError as e:
+        log.error(f"Failed to open master spreadsheet: {e}")
+        return
+
+    # Delete all sheets except "Sheet1"
+    google_sheets.delete_all_sheets_except(sheets_service, master_file_id, "Sheet1")
+
+    # Clear "Sheet1"
+    google_sheets.clear_sheet(sheets_service, master_file_id, "Sheet1")
+
+    # Step 1: Gather and normalize all rows from summary files
+    summary_data = []
+    year_set = set()
+
+    # We only want files named like "YYYY Summary"
+    year_summary_pattern = re.compile(r"^(\d{4}) Summary$")
+
+    for file in summary_files:
+        file_name = file["name"].strip()
+        match = year_summary_pattern.match(file_name)
+        if not match:
+            continue
+        year = match.group(1)
+        year_set.add(year)
+        file_id = file["id"]
+
+        try:
+            # Get first sheet name
+            file_spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=file_id).execute()
+            sheets_list = file_spreadsheet.get("sheets", [])
+            if not sheets_list:
+                log.warning(f'File "{file_name}" has no sheets, skipping.')
+                continue
+            source_sheet_title = sheets_list[0]["properties"]["title"]
+
+            data = google_sheets.get_sheet_values(sheets_service, file_id, source_sheet_title)
+            if len(data) < 2:
+                continue
+
+            headers = [str(h).strip() for h in data[0]]
+            lower_headers = [h.lower() for h in headers]
+            try:
+                count_index = lower_headers.index("count")
+            except ValueError:
+                count_index = -1
+
+            rows = data[1:]
+            for row in rows:
+                count = 1
+                if count_index >= 0 and count_index < len(row):
+                    try:
+                        count = int(row[count_index])
+                    except (ValueError, TypeError):
+                        count = 1
+                summary_data.append({"year": year, "headers": headers, "row": row, "count": count})
+        except HttpError as e:
+            log.error(f'❌ Failed to read "{file_name}": {e}')
+
+    if not summary_data:
+        log.warning("⚠️ No summary files found. Created empty Complete Summary.")
+        return
+
+    # Step 2: Build a unified header set using lowercase deduplication
+    header_map = OrderedDict()  # lowercased => original casing
+    for entry in summary_data:
+        for h in entry["headers"]:
+            key = h.lower()
+            if key != "count" and key not in header_map:
+                header_map[key] = h
+
+    base_headers = list(header_map.values())
+    years = sorted(year_set)
+    final_headers = base_headers + years
+
+    # Step 3: Consolidate rows using stringified deduplication keys
+    row_map = dict()
+
+    for entry in summary_data:
+        year = entry["year"]
+        headers = entry["headers"]
+        row = entry["row"]
+        count = entry["count"]
+
+        normalized_row = {}
+        for i, h in enumerate(headers):
+            key = h.lower()
+            if key != "count" and key in header_map:
+                normalized_row[header_map[key]] = str(row[i]) if i < len(row) else ""
+
+        signature = "|".join(normalized_row.get(h, "") for h in base_headers)
+
+        if signature not in row_map:
+            year_data = {y: "" for y in years}
+            row_map[signature] = {**normalized_row, **year_data}
+
+        existing_count = row_map[signature].get(year, "")
+        try:
+            existing_count_int = int(existing_count) if existing_count else 0
+        except ValueError:
+            existing_count_int = 0
+        row_map[signature][year] = str(existing_count_int + count)
+
+    # Step 4: Write to sheet
+    final_rows = [final_headers]
+    for row_obj in row_map.values():
+        final_rows.append([row_obj.get(h, "") for h in final_headers])
+
+    # Write values to sheet
+    format.set_values(sheets_service, master_file_id, "Sheet1", 1, 1, final_rows)
+
+    # Get sheet ID of "Sheet1"
+    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=master_file_id).execute()
+    sheet_id = None
+    for sheet in spreadsheet.get("sheets", []):
+        if sheet["properties"]["title"] == "Sheet1":
+            sheet_id = sheet["properties"]["sheetId"]
+            break
+    if sheet_id is None:
+        log.error('Sheet "Sheet1" not found in master spreadsheet.')
+        return
+
+    # Set all cells (including header) to plain text format
+    format.set_number_format(
+        sheets_service,
+        master_file_id,
+        sheet_id,
+        1,
+        len(final_rows),
+        1,
+        len(final_headers),
+        "@STRING@",
+    )
+
+    # Set header row bold
+    format.set_bold_font(sheets_service, master_file_id, sheet_id, 1, 1, 1, len(final_headers))
+
+    # Freeze header row
+    format.freeze_rows(sheets_service, master_file_id, sheet_id, 1)
+
+    # Set horizontal alignment to left for all data
+    format.set_horizontal_alignment(
+        sheets_service, master_file_id, sheet_id, 1, len(final_rows), 1, len(final_headers), "LEFT"
+    )
+
+    # Auto resize columns and adjust width with max 200 pixels
+    # Google Sheets API does not support setting column width directly with batchUpdate.
+    # We can only auto resize columns.
+    format.auto_resize_columns(sheets_service, master_file_id, sheet_id, 1, len(final_headers))
+
+    log.info(f"✅ {output_name} generated.")
 
 def deduplicate_rows_with_soft_match_complete_summary(sheet_data):
     dedup_fields = ["Title", "Remix", "Artist", "Comment", "Genre", "Year", "BPM"]

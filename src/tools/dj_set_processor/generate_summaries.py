@@ -1,12 +1,9 @@
-import re
-from collections import OrderedDict
-
-# from difflib import SequenceMatcher
-from googleapiclient.errors import HttpError
-
-import core.google_api as google_api
+import core.google_drive as google_drive
+import core.google_sheets as google_sheets
+import core.sheets_formatting as format
+import core.logger as log
 import config
-from core import logger as log
+import tools.dj_set_processor.deduplication as deduplication
 
 log = log.get_logger()
 
@@ -16,10 +13,10 @@ def generate_next_missing_summary():
     Generate the next missing summary for a year, if not locked.
     """
     log.info("🚀 Starting generate_next_missing_summary()")
-    drive_service = google_api.get_drive_service()
-    sheet_service = google_api.get_sheets_service()
+    drive_service = google_drive.get_drive_service()
+    sheet_service = google_sheets.get_sheets_service()
 
-    summary_folder = google_api.get_or_create_folder(
+    summary_folder = google_drive.get_or_create_folder(
         config.DJ_SETS_FOLDER_ID, config.SUMMARY_FOLDER_NAME, drive_service
     )
     log.debug(f"Summary folder: {summary_folder}")
@@ -28,7 +25,7 @@ def generate_next_missing_summary():
     #    log.info("🔒 Summary generation is locked. Skipping run.")
     #    return
 
-    year_folders = google_api.get_files_in_folder(
+    year_folders = google_drive.get_files_in_folder(
         drive_service, config.DJ_SETS_FOLDER_ID, mime_type="application/vnd.google-apps.folder"
     )
     log.debug(f"Year folders found: {[f['name'] for f in year_folders]}")
@@ -38,7 +35,7 @@ def generate_next_missing_summary():
             continue
 
         summary_name = f"{year} Summary"
-        existing_summaries = google_api.get_files_in_folder(
+        existing_summaries = google_drive.get_files_in_folder(
             drive_service, summary_folder, name_contains=summary_name
         )
         log.debug(f"Found existing summaries for {year}: {existing_summaries}")
@@ -47,7 +44,7 @@ def generate_next_missing_summary():
             continue
 
         log.debug(f"Getting files for year {year}")
-        files = google_api.get_files_in_folder(
+        files = google_drive.get_files_in_folder(
             drive_service, folder["id"], mime_type="application/vnd.google-apps.spreadsheet"
         )
         if any(f["name"].startswith("FAILED_") or "_Cleaned" in f["name"] for f in files):
@@ -85,7 +82,7 @@ def generate_summary_for_folder(
             for sheet in sheets_metadata.get("sheets", []):
                 sheet_title = sheet.get("properties", {}).get("title")
                 try:
-                    values = google_api.get_sheet_values(sheet_service, f["id"], sheet_title)
+                    values = google_sheets.get_sheet_values(sheet_service, f["id"], sheet_title)
                 except Exception as e:
                     log.error(f"❌ Could not read sheet {f['name']} - sheet '{sheet_title}' – {e}")
                     continue
@@ -122,7 +119,9 @@ def generate_summary_for_folder(
         log.info(f"📭 No valid data found in folder: {year}")
         return
 
-    final_header = list(all_headers) + ["Count"]
+    ordered_header = [col for col in config.desiredOrder if col in all_headers]
+    unordered_header = [col for col in all_headers if col not in config.desiredOrder]
+    final_header = ordered_header + unordered_header + ["Count"]
     final_rows = []
     for header, rows in sheet_data:
         idx_map = {h: i for i, h in enumerate(header)}
@@ -138,7 +137,7 @@ def generate_summary_for_folder(
     else:
         final_rows.sort()
 
-    ss_id = google_api.create_spreadsheet(
+    ss_id = google_drive.create_spreadsheet(
         drive_service, name=summary_name, parent_folder_id=summary_folder_id
     )
     log.debug(f"Created spreadsheet ID for {summary_name}: {ss_id}")
@@ -154,16 +153,16 @@ def generate_summary_for_folder(
     if not found_summary and sheets:
         # Rename the first sheet to "Summary"
         first_sheet_id = sheets[0]["properties"]["sheetId"]
-        google_api.rename_sheet(sheet_service, ss_id, first_sheet_id, "Summary")
+        google_sheets.rename_sheet(sheet_service, ss_id, first_sheet_id, "Summary")
 
     # Delete all sheets except "Summary"
     log.info(f"Deleting all sheets except 'Summary' in spreadsheet {ss_id}")
-    google_api.delete_all_sheets_except(sheet_service, ss_id, "Summary")
+    google_sheets.delete_all_sheets_except(sheet_service, ss_id, "Summary")
     log.debug("All sheets except 'Summary' deleted.")
 
     # Write summary data to "Summary" sheet
     log.info(f"Writing summary data to 'Summary' sheet with {len(final_rows)} rows")
-    google_api.write_sheet_data(sheet_service, ss_id, "Summary", final_header, final_rows)
+    google_sheets.write_sheet_data(sheet_service, ss_id, "Summary", final_header, final_rows)
     log.debug("Summary data written to 'Summary' sheet.")
 
     # Format the "Summary" sheet
@@ -178,12 +177,23 @@ def generate_summary_for_folder(
     if summary_sheet_id is None:
         log.error('Sheet "Summary" not found in spreadsheet.')
         return
+    # Set all cells (including header) to plain text format
+    format.set_number_format(
+        sheet_service,
+        ss_id,
+        summary_sheet_id,
+        1,
+        len(final_rows) + 1,
+        1,
+        len(final_header),
+        "@STRING@",
+    )
     # Set header row bold
-    google_api.set_bold_font(sheet_service, ss_id, summary_sheet_id, 1, 1, 1, len(final_header))
+    format.set_bold_font(sheet_service, ss_id, summary_sheet_id, 1, 1, 1, len(final_header))
     # Freeze header row
-    google_api.freeze_rows(sheet_service, ss_id, summary_sheet_id, 1)
+    format.freeze_rows(sheet_service, ss_id, summary_sheet_id, 1)
     # Set horizontal alignment to left for all data
-    google_api.set_horizontal_alignment(
+    format.set_horizontal_alignment(
         sheet_service,
         ss_id,
         summary_sheet_id,
@@ -193,239 +203,18 @@ def generate_summary_for_folder(
         len(final_header),
         "LEFT",
     )
-    # Set number format to text for data rows (excluding header)
-    if len(final_rows) > 0:
-        google_api.set_number_format(
-            sheet_service,
-            ss_id,
-            summary_sheet_id,
-            2,
-            len(final_rows) + 1,
-            1,
-            len(final_header),
-            "@STRING@",
-        )
     # Auto resize columns and adjust width with max 200 pixels
-    google_api.auto_resize_columns(sheet_service, ss_id, summary_sheet_id, 1, len(final_header))
+    format.auto_resize_columns(sheet_service, ss_id, summary_sheet_id, 1, len(final_header))
     log.info("Formatting of 'Summary' sheet complete.")
 
-    log.debug(f"Moving spreadsheet {ss_id} to folder {summary_folder_id}")
+    # log.debug(f"Moving spreadsheet {ss_id} to folder {summary_folder_id}")
     # google_api.move_file_to_folder(drive_service, ss_id, summary_folder_id)
-    log.info(f"✅ Summary successfully created: {summary_name}")
+    # log.info(f"✅ Summary successfully created: {summary_name}")
 
-
-def generate_complete_summary():
-    """
-    Generates a consolidated 'Complete Summary' spreadsheet from yearly summary spreadsheets.
-    """
-    try:
-        drive_service = google_api.get_drive_service()
-        sheets_service = google_api.get_sheets_service()
-    except Exception as e:
-        log.error(f"Authentication failed: {e}")
-        return
-
-    # Step 0: Get or create 'Summary' folder inside parent folder DJ_SETS
-    try:
-        summary_folder_id = google_api.get_or_create_subfolder(
-            drive_service, config.DJ_SETS_FOLDER_ID, "Summary"
-        )
-    except HttpError as e:
-        log.error(f"Failed to get or create 'Summary' folder: {e}")
-        return
-
-    # List all files in summary folder
-    try:
-        summary_files = google_api.list_files_in_folder(drive_service, summary_folder_id)
-    except HttpError as e:
-        log.error(f"Failed to list files in Summary folder: {e}")
-        return
-
-    # Determine output spreadsheet name
-    output_name = "_pending_Complete Summary"
-    # Check if any file with name containing "complete summary" exists (case insensitive)
-    for f in summary_files:
-        if (
-            f["mimeType"] == "application/vnd.google-apps.spreadsheet"
-            and "complete summary" in f["name"].lower()
-        ):
-            log.warning(f'⚠️ Existing "Complete Summary" detected — using name: {output_name}')
-            break
-
-    # Check if output file already exists
-    existing_file = google_api.get_file_by_name(drive_service, summary_folder_id, output_name)
-    if existing_file:
-        master_file_id = existing_file["id"]
-        log.info(f'Using existing master file "{output_name}" with ID: {master_file_id}')
-    else:
-        # Create new spreadsheet
-        master_file_id = google_api.create_spreadsheet(
-            drive_service, output_name, summary_folder_id
-        )
-
-    # Open master spreadsheet info
-    try:
-        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=master_file_id).execute()
-    except HttpError as e:
-        log.error(f"Failed to open master spreadsheet: {e}")
-        return
-
-    # Delete all sheets except "Sheet1"
-    google_api.delete_all_sheets_except(sheets_service, master_file_id, "Sheet1")
-
-    # Clear "Sheet1"
-    google_api.clear_sheet(sheets_service, master_file_id, "Sheet1")
-
-    # Step 1: Gather and normalize all rows from summary files
-    summary_data = []
-    year_set = set()
-
-    # We only want files named like "YYYY Summary"
-    year_summary_pattern = re.compile(r"^(\d{4}) Summary$")
-
-    for file in summary_files:
-        file_name = file["name"].strip()
-        match = year_summary_pattern.match(file_name)
-        if not match:
-            continue
-        year = match.group(1)
-        year_set.add(year)
-        file_id = file["id"]
-
-        try:
-            # Get first sheet name
-            file_spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=file_id).execute()
-            sheets_list = file_spreadsheet.get("sheets", [])
-            if not sheets_list:
-                log.warning(f'File "{file_name}" has no sheets, skipping.')
-                continue
-            source_sheet_title = sheets_list[0]["properties"]["title"]
-
-            data = google_api.get_sheet_values(sheets_service, file_id, source_sheet_title)
-            if len(data) < 2:
-                continue
-
-            headers = [str(h).strip() for h in data[0]]
-            lower_headers = [h.lower() for h in headers]
-            try:
-                count_index = lower_headers.index("count")
-            except ValueError:
-                count_index = -1
-
-            rows = data[1:]
-            for row in rows:
-                count = 1
-                if count_index >= 0 and count_index < len(row):
-                    try:
-                        count = int(row[count_index])
-                    except (ValueError, TypeError):
-                        count = 1
-                summary_data.append({"year": year, "headers": headers, "row": row, "count": count})
-        except HttpError as e:
-            log.error(f'❌ Failed to read "{file_name}": {e}')
-
-    if not summary_data:
-        log.warning("⚠️ No summary files found. Created empty Complete Summary.")
-        return
-
-    # Step 2: Build a unified header set using lowercase deduplication
-    header_map = OrderedDict()  # lowercased => original casing
-    for entry in summary_data:
-        for h in entry["headers"]:
-            key = h.lower()
-            if key != "count" and key not in header_map:
-                header_map[key] = h
-
-    base_headers = list(header_map.values())
-    years = sorted(year_set)
-    final_headers = base_headers + years
-
-    # Step 3: Consolidate rows using stringified deduplication keys
-    row_map = dict()
-
-    for entry in summary_data:
-        year = entry["year"]
-        headers = entry["headers"]
-        row = entry["row"]
-        count = entry["count"]
-
-        normalized_row = {}
-        for i, h in enumerate(headers):
-            key = h.lower()
-            if key != "count" and key in header_map:
-                normalized_row[header_map[key]] = str(row[i]) if i < len(row) else ""
-
-        signature = "|".join(normalized_row.get(h, "") for h in base_headers)
-
-        if signature not in row_map:
-            year_data = {y: "" for y in years}
-            row_map[signature] = {**normalized_row, **year_data}
-
-        existing_count = row_map[signature].get(year, "")
-        try:
-            existing_count_int = int(existing_count) if existing_count else 0
-        except ValueError:
-            existing_count_int = 0
-        row_map[signature][year] = str(existing_count_int + count)
-
-    # Step 4: Write to sheet
-    final_rows = [final_headers]
-    for row_obj in row_map.values():
-        final_rows.append([row_obj.get(h, "") for h in final_headers])
-
-    # Write values to sheet
-    google_api.set_values(sheets_service, master_file_id, "Sheet1", 1, 1, final_rows)
-
-    # Get sheet ID of "Sheet1"
-    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=master_file_id).execute()
-    sheet_id = None
-    for sheet in spreadsheet.get("sheets", []):
-        if sheet["properties"]["title"] == "Sheet1":
-            sheet_id = sheet["properties"]["sheetId"]
-            break
-    if sheet_id is None:
-        log.error('Sheet "Sheet1" not found in master spreadsheet.')
-        return
-
-    # Set header row bold
-    google_api.set_bold_font(sheets_service, master_file_id, sheet_id, 1, 1, 1, len(final_headers))
-
-    # Freeze header row
-    google_api.freeze_rows(sheets_service, master_file_id, sheet_id, 1)
-
-    # Set horizontal alignment to left for all data
-    google_api.set_horizontal_alignment(
-        sheets_service, master_file_id, sheet_id, 1, len(final_rows), 1, len(final_headers), "LEFT"
-    )
-
-    # Set number format to text for data rows (excluding header)
-    if len(final_rows) > 1:
-        google_api.set_number_format(
-            sheets_service,
-            master_file_id,
-            sheet_id,
-            2,
-            len(final_rows),
-            1,
-            len(final_headers),
-            "@STRING@",
-        )
-
-    # Auto resize columns and adjust width with max 200 pixels
-    # Google Sheets API does not support setting column width directly with batchUpdate.
-    # We can only auto resize columns.
-    google_api.auto_resize_columns(sheets_service, master_file_id, sheet_id, 1, len(final_headers))
-
-    log.info(f"✅ {output_name} generated.")
-
-
-def main():
-    """
-    Main entry point for module execution.
-    """
-    generate_next_missing_summary()
-    generate_complete_summary()
+    log.info(f"Starting deduplication for: {summary_name}")
+    deduplication.deduplicate_summary(ss_id)
+    log.info(f"✅ Deduplication completed for: {summary_name}")
 
 
 if __name__ == "__main__":
-    main()
+    generate_next_missing_summary()

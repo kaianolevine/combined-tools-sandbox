@@ -1,6 +1,8 @@
 import re
 from typing import List
-import core.google_drive as google_api
+import core.google_drive as drive
+import core.google_sheets as sheets
+import core.sheets_formatting as format
 import config
 import tools.dj_set_processor.helpers as helpers
 from core import logger as log
@@ -10,15 +12,15 @@ log = log.get_logger()
 
 def generate_dj_set_collection():
     log.info("🚀 Starting generate_dj_set_collection")
-    drive_service = google_api.get_drive_service()
-    sheets_service = google_api.get_sheets_service()
+    drive_service = drive.get_drive_service()
+    sheets_service = sheets.get_sheets_service()
 
     # Locate DJ_SETS folder (we assume the constant ID points to the shared drive folder or folder in shared drive)
     parent_folder_id = config.DJ_SETS_FOLDER_ID
     log.info(f"📁 Using DJ_SETS folder: {parent_folder_id}")
 
     # Check for existing file or create new (create directly in the shared drive parent)
-    spreadsheet_id = google_api.find_or_create_file_by_name(
+    spreadsheet_id = drive.find_or_create_file_by_name(
         drive_service,
         config.OUTPUT_NAME,
         parent_folder_id,
@@ -27,10 +29,10 @@ def generate_dj_set_collection():
     log.info(f"📄 Spreadsheet ID: {spreadsheet_id}")
 
     # Ensure there's exactly one temp sheet to start from
-    google_api.clear_all_except_one_sheet(sheets_service, spreadsheet_id, config.TEMP_TAB_NAME)
+    sheets.clear_all_except_one_sheet(sheets_service, spreadsheet_id, config.TEMP_TAB_NAME)
 
     # Enumerate subfolders in DJ_SETS
-    subfolders = google_api.get_all_subfolders(drive_service, parent_folder_id)
+    subfolders = drive.get_all_subfolders(drive_service, parent_folder_id)
     log.debug(f"Retrieved {len(subfolders)} subfolders")
     subfolders.sort(key=lambda f: f["name"], reverse=True)
 
@@ -41,7 +43,7 @@ def generate_dj_set_collection():
         folder_id = folder["id"]
         log.info(f"📁 Processing folder: {name} (id: {folder_id})")
 
-        files = google_api.get_files_in_folder(drive_service, folder_id)
+        files = drive.get_files_in_folder(drive_service, folder_id)
         log.debug(f"Found {len(files)} files in folder '{name}'")
         rows = []
 
@@ -82,14 +84,14 @@ def generate_dj_set_collection():
                     },
                 ).execute()
                 log.info("Inserting rows into Summary sheet")
-                google_api.insert_rows(
+                sheets.insert_rows(
                     sheets_service,
                     spreadsheet_id,
                     config.SUMMARY_TAB_NAME,
                     [["Year", "Link"]] + all_rows,
                 )
                 log.info("Setting column formatting for Summary sheet")
-                google_api.set_column_formatting(
+                format.set_column_formatting(
                     sheets_service, spreadsheet_id, config.SUMMARY_TAB_NAME, 2
                 )
         elif rows:
@@ -101,22 +103,22 @@ def generate_dj_set_collection():
                 body={"requests": [{"addSheet": {"properties": {"title": name}}}]},
             ).execute()
             log.info(f"Inserting rows into sheet '{name}'")
-            google_api.insert_rows(
+            sheets.insert_rows(
                 sheets_service, spreadsheet_id, name, [["Date", "Name", "Link"]] + rows
             )
             log.info(f"Setting column formatting for sheet '{name}'")
-            google_api.set_column_formatting(sheets_service, spreadsheet_id, name, 3)
+            format.set_column_formatting(sheets_service, spreadsheet_id, name, 3)
             tabs_to_add.append(name)
 
     # Clean up temp sheets if any
     log.info(f"Deleting temp sheets: {config.TEMP_TAB_NAME} and 'Sheet1' if they exist")
-    google_api.delete_sheet_by_name(sheets_service, spreadsheet_id, config.TEMP_TAB_NAME)
-    google_api.delete_sheet_by_name(sheets_service, spreadsheet_id, "Sheet1")
+    sheets.delete_sheet_by_name(sheets_service, spreadsheet_id, config.TEMP_TAB_NAME)
+    sheets.delete_sheet_by_name(sheets_service, spreadsheet_id, "Sheet1")
 
     # Reorder sheets: tabs_to_add then Summary
     log.info(f"Reordering sheets with order: {tabs_to_add + [config.SUMMARY_TAB_NAME]}")
-    metadata = google_api.get_spreadsheet_metadata(sheets_service, spreadsheet_id)
-    google_api.reorder_sheets(
+    metadata = sheets.get_spreadsheet_metadata(sheets_service, spreadsheet_id)
+    sheets.reorder_sheets(
         sheets_service, spreadsheet_id, tabs_to_add + [config.SUMMARY_TAB_NAME], metadata
     )
     log.info("Completed reordering sheets")
