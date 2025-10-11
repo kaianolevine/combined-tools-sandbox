@@ -5,6 +5,7 @@ import re
 
 import core._google_credentials as google_api
 import tools.dj_set_processor.config as config
+import core.google_drive as drive
 from difflib import SequenceMatcher
 from typing import Tuple
 from googleapiclient.errors import HttpError
@@ -70,9 +71,9 @@ def try_lock_folder(folder_name):
     Emulate folder locking by creating a lock file inside the folder.
     Returns True if lock acquired, False if already locked.
     """
-    drive_service = google_api.get_drive_service()
+    drive_service = google_api.get_drive_client()
     folder_id = config.DJ_SETS
-    summary_folder_id = get_or_create_subfolder(drive_service, folder_id, folder_name)
+    summary_folder_id = drive.get_or_create_subfolder(drive_service, folder_id, folder_name)
     query = (
         f"'{summary_folder_id}' in parents and name='{config.LOCK_FILE_NAME}' and trashed=false"
     )
@@ -95,9 +96,9 @@ def release_folder_lock(folder_name):
     """
     Remove the lock file to release the lock.
     """
-    drive_service = google_api.get_drive_service()
+    drive_service = google_api.get_drive_client()
     folder_id = config.DJ_SETS
-    summary_folder_id = get_or_create_subfolder(drive_service, folder_id, folder_name)
+    summary_folder_id = drive.get_or_create_subfolder(drive_service, folder_id, folder_name)
     query = (
         f"'{summary_folder_id}' in parents and name='{config.LOCK_FILE_NAME}' and trashed=false"
     )
@@ -185,12 +186,6 @@ def _get_dedup_match_score(row_a, row_b, dedup_indices):
             elif field == "Title" and clean_title(a) == clean_title(b):
                 matches += 1
     return matches / total if total > 0 else 0
-
-
-def get_or_create_subfolder(parent, name):
-    """Placeholder for Drive API get-or-create subfolder logic."""
-    # This should be implemented with the actual Drive API client
-    raise NotImplementedError("Drive API subfolder management not implemented.")
 
 
 def extract_date_and_title(file_name: str) -> Tuple[str, str]:
