@@ -118,7 +118,7 @@ def generate_dj_set_collection():
     # Reorder sheets: tabs_to_add then Summary
     log.info(f"Reordering sheets with order: {tabs_to_add + [config.SUMMARY_TAB_NAME]}")
     metadata = sheets.get_spreadsheet_metadata(sheets_service, spreadsheet_id)
-    sheets.reorder_sheets(
+    format.reorder_sheets(
         sheets_service, spreadsheet_id, tabs_to_add + [config.SUMMARY_TAB_NAME], metadata
     )
     log.info("Completed reordering sheets")
