@@ -1,8 +1,5 @@
 import json
-import os
-import pytest
 from unittest import mock
-from google.oauth2 import service_account
 from core import _google_credentials
 
 
