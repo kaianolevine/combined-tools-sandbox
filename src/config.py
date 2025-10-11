@@ -9,6 +9,7 @@ load_dotenv()
 # CSV_FILES = "1YskZ8sD2H0bA9rxzWnE8iV15P7kWRk8N"  # My Drive/Deejay Marvel/CSV-Uploaded
 
 CSV_SOURCE_FOLDER_ID = "1t4d_8lMC3ZJfSyainbpwInoDta7n69hC"  # KaianoLevineWCS/CSV
+DJ_SETS_FOLDER_ID_OLD = "11zVwUZLDfB6uXpwNdA3c4Xsev2aG26fc"  # My Drive/Deejay Marvel/DJ Sets
 DJ_SETS_FOLDER_ID = "1A0tKQ2DBXI1Bt9h--olFwnBNne3am-rL"  # KaianoLevineWCS/DJ Sets
 
 MUSIC_UPLOAD_SOURCE_FOLDER_ID = "1Iu5TwzOXVqCDef2X8S5TZcFo1NdSHpRU"  # Music tagging input
