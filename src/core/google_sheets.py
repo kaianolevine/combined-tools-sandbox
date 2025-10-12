@@ -97,15 +97,7 @@ def append_rows(service, spreadsheet_id: str, range_name: str, values: list) -> 
     log.info(f"Appended {len(values)} rows to {range_name} with result: {result}")
 
 
-# Utility logging functions to handle writing to specific tabs
-def log_debug(service, spreadsheet_id: str, message: str):
-    log.debug(f"log_debug called with spreadsheet_id={spreadsheet_id}, message={message}")
-    get_or_create_sheet(service, spreadsheet_id, "Debug")
-    log.debug(f"Logging to Debug: {message}")
-    append_rows(service, spreadsheet_id, "Debug!A1", [[message]])
-
-
-def log_info(service, spreadsheet_id: str, message: str):
+def log_info_sheet(service, spreadsheet_id: str, message: str):
     log.debug(f"log_info called with spreadsheet_id={spreadsheet_id}, message={message}")
     get_or_create_sheet(service, spreadsheet_id, "Info")
     log.info(f"Logging to Info: {message}")
