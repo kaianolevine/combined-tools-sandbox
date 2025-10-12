@@ -1,11 +1,13 @@
 import core.google_drive as google_drive
 import core.google_sheets as google_sheets
 import core.sheets_formatting as format
+import tools.dj_set_processor.deduplication as deduplication
 import core.logger as log
 import config
 import time
 from googleapiclient.errors import HttpError
 import random
+
 
 log = log.get_logger()
 
@@ -274,6 +276,8 @@ def generate_summary_for_folder(
     # Auto resize columns and adjust width with max 200 pixels
     format.auto_resize_columns(sheet_service, ss_id, summary_sheet_id, 1, len(final_header))
     log.info("Formatting of 'Summary' sheet complete.")
+
+    deduplication.deduplicate_summary(ss_id)
 
 
 if __name__ == "__main__":

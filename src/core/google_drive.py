@@ -437,3 +437,41 @@ def find_or_create_file_by_name(
     except HttpError as error:
         log.error(f"An error occurred while finding or creating file: {error}")
         raise
+
+
+def find_subfolder_id(service, parent_folder_id: str, subfolder_name: str) -> str | None:
+    """
+    Finds the ID of a subfolder with the given name inside the specified parent folder.
+
+    Args:
+        service: An authorized Google Drive service instance.
+        parent_folder_id (str): The ID of the parent folder to search within.
+        subfolder_name (str): The exact name of the subfolder to find.
+
+    Returns:
+        str | None: The ID of the subfolder if found, otherwise None.
+    """
+    try:
+        query = (
+            f"'{parent_folder_id}' in parents and "
+            f"mimeType = 'application/vnd.google-apps.folder' and "
+            f"name = '{subfolder_name}' and trashed = false"
+        )
+        response = (
+            service.files()
+            .list(
+                q=query,
+                spaces="drive",
+                fields="files(id, name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=10,
+            )
+            .execute()
+        )
+        files = response.get("files", [])
+        if files:
+            return files[0]["id"]
+    except Exception as e:
+        log.error(f"❌ Error finding subfolder '{subfolder_name}': {e}")
+    return None

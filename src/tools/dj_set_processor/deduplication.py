@@ -85,9 +85,3 @@ def rows_equal_except_count(row1, row2, count_index):
         (i == count_index or (i < len(row1) and i < len(row2) and row1[i] == row2[i]))
         for i in range(len(row1))
     )
-
-
-if __name__ == "__main__":
-    raise RuntimeError(
-        "This script should not be run directly. Use the imported function instead."
-    )
