@@ -3,6 +3,7 @@ import core.google_sheets as google_sheets
 import core.sheets_formatting as format
 import core.logger as log
 import config
+import time
 
 # import tools.dj_set_processor.deduplication as deduplication
 
@@ -84,6 +85,7 @@ def generate_summary_for_folder(
                 sheet_title = sheet.get("properties", {}).get("title")
                 try:
                     values = google_sheets.get_sheet_values(sheet_service, f["id"], sheet_title)
+                    time.sleep(1)
                 except Exception as e:
                     log.error(f"❌ Could not read sheet {f['name']} - sheet '{sheet_title}' – {e}")
                     continue
