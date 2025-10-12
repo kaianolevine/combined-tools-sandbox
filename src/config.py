@@ -20,6 +20,9 @@ VDJ_HISTORY_FOLDER_ID = "1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o"  # VDJ/History
 LIVE_HISTORY_SPREADSHEET_ID = (
     "1DpUCQWK3vGGdzUC5JmXVeojqsM_hp7U2DcSEGq6cF-U"  # Deejay Marvel - Last 3 Hours
 )
+PRIVATE_HISTORY_SPREADSHEET_ID = (
+    "1z9ZtI5mscyR0sP4KzD2FJjLkSUhR9XBtt8U9PLpBj3M"  # Music History sheet
+)
 
 # Spotify configuration
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "407fc37efd5f413b9c9ac3f516875d5b")

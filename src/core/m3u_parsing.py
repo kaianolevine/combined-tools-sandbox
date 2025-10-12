@@ -89,7 +89,11 @@ def parse_m3u_lines(lines, existing_keys, file_date_str):
             time = extract_tag_value(line, "time")
             title = extract_tag_value(line, "title")
             artist = extract_tag_value(line, "artist") or ""
-            log.debug(f"Extracted tags - time: '{time}', title: '{title}', artist: '{artist}'")
+            length = extract_tag_value(line, "songlength") or ""
+            last_play = extract_tag_value(line, "lastplaytime") or ""
+            log.debug(
+                f"Extracted tags - time: '{time}', title: '{title}', artist: '{artist}', length: '{length}', lastplay: '{last_play}'"
+            )
 
             if time and title:
                 current_minutes = parse_time_str(time)
@@ -103,7 +107,9 @@ def parse_m3u_lines(lines, existing_keys, file_date_str):
                 full_dt = f"{current_date.strftime('%Y-%m-%d')} {time.strip()}"
                 key = "||".join(v.strip().lower() for v in [full_dt, title, artist])
                 if key not in existing_keys:
-                    entries.append([full_dt, title.strip(), artist.strip()])
+                    entries.append(
+                        [full_dt, title.strip(), artist.strip(), length.strip(), last_play.strip()]
+                    )
                     existing_keys.add(key)
                     log.debug(f"Appended new entry: {entries[-1]}")
     log.info(f"Parsed {len(entries)} new entries from .m3u file.")

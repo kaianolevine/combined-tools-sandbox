@@ -138,8 +138,10 @@ def publish_history(drive_service, sheets_service):
 
 
 if __name__ == "__main__":
+    import tools.private_history.update_private_history as private_history
 
     drive_service = google_drive.get_drive_service()
     sheets_service = google_sheets.get_sheets_service()
 
     publish_history(drive_service, sheets_service)
+    private_history.publish_private_history(drive_service, sheets_service)
