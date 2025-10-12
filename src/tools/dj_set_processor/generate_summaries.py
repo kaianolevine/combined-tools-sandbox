@@ -3,7 +3,8 @@ import core.google_sheets as google_sheets
 import core.sheets_formatting as format
 import core.logger as log
 import config
-import tools.dj_set_processor.deduplication as deduplication
+
+# import tools.dj_set_processor.deduplication as deduplication
 
 log = log.get_logger()
 
@@ -211,9 +212,9 @@ def generate_summary_for_folder(
     # google_api.move_file_to_folder(drive_service, ss_id, summary_folder_id)
     # log.info(f"✅ Summary successfully created: {summary_name}")
 
-    log.info(f"Starting deduplication for: {summary_name}")
-    deduplication.deduplicate_summary(ss_id)
-    log.info(f"✅ Deduplication completed for: {summary_name}")
+    # log.info(f"Starting deduplication for: {summary_name}")
+    # deduplication.deduplicate_summary(ss_id)
+    # log.info(f"✅ Deduplication completed for: {summary_name}")
 
 
 if __name__ == "__main__":
