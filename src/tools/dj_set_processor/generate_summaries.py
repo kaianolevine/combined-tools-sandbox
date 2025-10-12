@@ -41,6 +41,29 @@ def _safe_get_spreadsheet(sheet_service, spreadsheet_id, fields=None, max_retrie
     return sheet_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
 
 
+def retry_with_backoff(task_fn, max_retries=6, base_delay=1.0, task_description="task"):
+    for attempt in range(max_retries):
+        try:
+            return task_fn()
+        except HttpError as e:
+            status = getattr(e.resp, "status", None)
+            if status == 429 or (status == 403 and "quota" in str(e).lower()):
+                wait = base_delay * (2**attempt) + random.uniform(0, 0.5)
+                log.warning(
+                    f"⚠️ Rate limited on {task_description}, retrying in {wait:.1f}s (attempt {attempt+1}/{max_retries})"
+                )
+                time.sleep(wait)
+                continue
+            raise
+        except Exception as e:
+            log.error(f"❌ Unexpected error on {task_description} – {e}")
+            if attempt >= 2:
+                raise
+            wait = base_delay * (2**attempt) + random.uniform(0, 0.5)
+            time.sleep(wait)
+    raise RuntimeError(f"Failed all retries for {task_description}")
+
+
 def generate_next_missing_summary():
     """
     Generate the next missing summary for a year, if not locked.
@@ -102,18 +125,12 @@ def generate_summary_for_folder(
     for f in files:
         log.info(f"🔍 Reading {f['name']}")
         try:
-            for attempt in range(3):
-                try:
-                    # Get sheets metadata for this spreadsheet using safe getter and minimal fields
-                    sheets_metadata = _safe_get_spreadsheet(
-                        sheet_service, f["id"], fields="sheets(properties(title))"
-                    )
-                    break
-                except Exception as e:
-                    log.warning(f"⚠️ Attempt {attempt+1} failed to read {f['name']} – {e}")
-                    if attempt == 2:
-                        raise
-                    time.sleep(2**attempt + random.uniform(0, 0.5))
+            sheets_metadata = retry_with_backoff(
+                lambda: _safe_get_spreadsheet(
+                    sheet_service, f["id"], fields="sheets(properties(title))"
+                ),
+                task_description=f"fetching spreadsheet metadata for {f['name']}",
+            )
 
             sheets = sheets_metadata.get("sheets", [])
             if not sheets:
@@ -125,37 +142,13 @@ def generate_summary_for_folder(
                 if not sheet_title:
                     log.debug(f"Skipping sheet with missing title in spreadsheet {f['name']}")
                     continue
-                for attempt in range(3):
-                    try:
-                        values = google_sheets.get_sheet_values(
-                            sheet_service, f["id"], sheet_title
-                        )
-                        time.sleep(1)
-                        break
-                    except HttpError as e:
-                        status = getattr(e.resp, "status", None)
-                        if status == 429 or (status == 403 and "quota" in str(e).lower()):
-                            wait = 2**attempt + random.uniform(0, 0.5)
-                            log.warning(
-                                f"⚠️ Rate limited on {f['name']} - '{sheet_title}', retrying in {wait:.1f}s (attempt {attempt+1}/3)"
-                            )
-                            time.sleep(wait)
-                            continue
-                        log.error(
-                            f"❌ Could not read sheet {f['name']} - sheet '{sheet_title}' – {e}"
-                        )
-                        if attempt == 2:
-                            raise
-                    except Exception as e:
-                        log.error(
-                            f"❌ Unexpected error reading sheet {f['name']} - '{sheet_title}' – {e}"
-                        )
-                        if attempt == 2:
-                            raise
-                else:
-                    raise RuntimeError(
-                        f"Failed all retries for {f['name']} - sheet '{sheet_title}'"
-                    )
+                values = retry_with_backoff(
+                    lambda: google_sheets.get_sheet_values(sheet_service, f["id"], sheet_title),
+                    base_delay=2.0,
+                    task_description=f"reading sheet '{sheet_title}' in {f['name']}",
+                )
+
+                time.sleep(2)
 
                 if not values or len(values) < 2:
                     log.warning(f"⚠️ No data in {f['name']} - sheet '{sheet_title}'")

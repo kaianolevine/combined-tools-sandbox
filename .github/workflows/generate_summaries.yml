@@ -3,7 +3,7 @@ name: Generate Summaries
 on:
   workflow_dispatch:
   repository_dispatch:
-    types: [trigger-generate-summaries]
+    types: [generate-summary]
 
 concurrency:
   group: dj-set-collection
