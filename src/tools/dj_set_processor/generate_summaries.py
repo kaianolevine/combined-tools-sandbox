@@ -85,7 +85,7 @@ def generate_summary_for_folder(
                 sheet_title = sheet.get("properties", {}).get("title")
                 try:
                     values = google_sheets.get_sheet_values(sheet_service, f["id"], sheet_title)
-                    time.sleep(1)
+                    time.sleep(2)
                 except Exception as e:
                     log.error(f"❌ Could not read sheet {f['name']} - sheet '{sheet_title}' – {e}")
                     continue
