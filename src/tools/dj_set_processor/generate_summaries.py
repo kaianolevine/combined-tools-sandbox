@@ -4,10 +4,41 @@ import core.sheets_formatting as format
 import core.logger as log
 import config
 import time
-
-# import tools.dj_set_processor.deduplication as deduplication
+from googleapiclient.errors import HttpError
+import random
 
 log = log.get_logger()
+
+
+def _safe_get_spreadsheet(sheet_service, spreadsheet_id, fields=None, max_retries=6):
+    """Get spreadsheet metadata with exponential backoff on rate limits (429).
+
+    Returns the decoded response dict or raises the last exception.
+    """
+    delay = 1.0
+    for attempt in range(max_retries):
+        try:
+            req = sheet_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
+            if fields:
+                req = sheet_service.spreadsheets().get(spreadsheetId=spreadsheet_id, fields=fields)
+            return req.execute()
+        except HttpError as e:
+            status = getattr(e.resp, "status", None)
+            # Retry on rate limit errors
+            if status == 429 or (status == 403 and "quota" in str(e).lower()):
+                wait = delay + random.uniform(0, 0.5)
+                log.warning(
+                    f"Rate limited when fetching spreadsheet {spreadsheet_id}; retrying in {wait:.1f}s (attempt {attempt+1}/{max_retries})"
+                )
+                time.sleep(wait)
+                delay *= 2
+                continue
+            raise
+        except Exception:
+            # Non-HTTP errors: re-raise
+            raise
+    # If we exhausted retries, make one final attempt to raise the underlying error
+    return sheet_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
 
 
 def generate_next_missing_summary():
@@ -23,14 +54,11 @@ def generate_next_missing_summary():
     )
     log.debug(f"Summary folder: {summary_folder}")
 
-    # if not helpers.try_lock_folder(config.SUMMARY_FOLDER_NAME):
-    #    log.info("🔒 Summary generation is locked. Skipping run.")
-    #    return
-
     year_folders = google_drive.get_files_in_folder(
         drive_service, config.DJ_SETS_FOLDER_ID, mime_type="application/vnd.google-apps.folder"
     )
     log.debug(f"Year folders found: {[f['name'] for f in year_folders]}")
+    processed_any = False
     for folder in year_folders:
         year = folder["name"]
         if year.lower() == "summary":
@@ -43,6 +71,8 @@ def generate_next_missing_summary():
         log.debug(f"Found existing summaries for {year}: {existing_summaries}")
         if existing_summaries:
             log.info(f"✅ Summary already exists for {year}")
+            if processed_any:
+                break
             continue
 
         log.debug(f"Getting files for year {year}")
@@ -53,19 +83,13 @@ def generate_next_missing_summary():
             log.info(f"⛔ Skipping year {year} — unready files found")
             continue
 
-        # if not helpers.try_lock_folder(year):
-        #    log.info(f"🔒 Year {year} is locked. Skipping.")
-        #    continue
-
-        # try:
         log.debug(f"Files to process for {year}: {[f['name'] for f in files]}")
         log.info(f"🔧 Generating summary for {year}...")
         generate_summary_for_folder(
             drive_service, sheet_service, files, summary_folder, summary_name, year
         )
-        # finally:
-        #    helpers.release_folder_lock(year)
-        #    helpers.release_folder_lock(config.SUMMARY_FOLDER_NAME)
+        processed_any = True
+        break
 
 
 def generate_summary_for_folder(
@@ -78,17 +102,60 @@ def generate_summary_for_folder(
     for f in files:
         log.info(f"🔍 Reading {f['name']}")
         try:
-            # Get all sheets metadata for this spreadsheet
-            sheets_metadata = sheet_service.spreadsheets().get(spreadsheetId=f["id"]).execute()
-            log.debug(f"Sheets metadata for {f['name']}: {sheets_metadata.get('sheets', [])}")
-            for sheet in sheets_metadata.get("sheets", []):
-                sheet_title = sheet.get("properties", {}).get("title")
+            for attempt in range(3):
                 try:
-                    values = google_sheets.get_sheet_values(sheet_service, f["id"], sheet_title)
-                    time.sleep(2)
+                    # Get sheets metadata for this spreadsheet using safe getter and minimal fields
+                    sheets_metadata = _safe_get_spreadsheet(
+                        sheet_service, f["id"], fields="sheets(properties(title))"
+                    )
+                    break
                 except Exception as e:
-                    log.error(f"❌ Could not read sheet {f['name']} - sheet '{sheet_title}' – {e}")
+                    log.warning(f"⚠️ Attempt {attempt+1} failed to read {f['name']} – {e}")
+                    if attempt == 2:
+                        raise
+                    time.sleep(2**attempt + random.uniform(0, 0.5))
+
+            sheets = sheets_metadata.get("sheets", [])
+            if not sheets:
+                log.warning(f"⚠️ No sheets found in spreadsheet {f['name']} ({f['id']}); skipping")
+                continue
+
+            for sheet in sheets:
+                sheet_title = sheet.get("properties", {}).get("title")
+                if not sheet_title:
+                    log.debug(f"Skipping sheet with missing title in spreadsheet {f['name']}")
                     continue
+                for attempt in range(3):
+                    try:
+                        values = google_sheets.get_sheet_values(
+                            sheet_service, f["id"], sheet_title
+                        )
+                        time.sleep(1)
+                        break
+                    except HttpError as e:
+                        status = getattr(e.resp, "status", None)
+                        if status == 429 or (status == 403 and "quota" in str(e).lower()):
+                            wait = 2**attempt + random.uniform(0, 0.5)
+                            log.warning(
+                                f"⚠️ Rate limited on {f['name']} - '{sheet_title}', retrying in {wait:.1f}s (attempt {attempt+1}/3)"
+                            )
+                            time.sleep(wait)
+                            continue
+                        log.error(
+                            f"❌ Could not read sheet {f['name']} - sheet '{sheet_title}' – {e}"
+                        )
+                        if attempt == 2:
+                            raise
+                    except Exception as e:
+                        log.error(
+                            f"❌ Unexpected error reading sheet {f['name']} - '{sheet_title}' – {e}"
+                        )
+                        if attempt == 2:
+                            raise
+                else:
+                    raise RuntimeError(
+                        f"Failed all retries for {f['name']} - sheet '{sheet_title}'"
+                    )
 
                 if not values or len(values) < 2:
                     log.warning(f"⚠️ No data in {f['name']} - sheet '{sheet_title}'")
@@ -103,11 +170,12 @@ def generate_summary_for_folder(
                 if not keep_indices:
                     continue
                 filtered_header = [header[i] for i in keep_indices]
-                filtered_rows = [
-                    [row[i] for i in keep_indices]
-                    for row in rows
-                    if any(cell.strip() for cell in row)
-                ]
+                filtered_rows = []
+                for row in rows:
+                    if not any((cell or "").strip() for cell in row):
+                        continue
+                    padded = row + [""] * (max(keep_indices) + 1 - len(row))
+                    filtered_rows.append([padded[i] for i in keep_indices])
                 log.debug(
                     f"Filtered header for sheet '{sheet_title}': {filtered_header}, rows: {len(filtered_rows)}"
                 )
@@ -115,8 +183,8 @@ def generate_summary_for_folder(
                     all_headers.update(filtered_header)
                     sheet_data.append((filtered_header, filtered_rows))
         except Exception as e:
-            log.error(f"❌ Could not get sheet metadata for {f['name']} – {e}")
-            continue
+            log.error(f"❌ Fatal error accessing {f['name']} – {e}")
+            raise
 
     if not sheet_data:
         log.info(f"📭 No valid data found in folder: {year}")
@@ -146,7 +214,9 @@ def generate_summary_for_folder(
     log.debug(f"Created spreadsheet ID for {summary_name}: {ss_id}")
 
     # Ensure a sheet named "Summary" exists
-    spreadsheet_info = sheet_service.spreadsheets().get(spreadsheetId=ss_id).execute()
+    spreadsheet_info = _safe_get_spreadsheet(
+        sheet_service, ss_id, fields="sheets(properties(sheetId,title))"
+    )
     sheets = spreadsheet_info.get("sheets", [])
     found_summary = False
     for sheet in sheets:
@@ -171,7 +241,9 @@ def generate_summary_for_folder(
     # Format the "Summary" sheet
     log.info("Formatting 'Summary' sheet")
     # Get sheet ID for "Summary"
-    spreadsheet = sheet_service.spreadsheets().get(spreadsheetId=ss_id).execute()
+    spreadsheet = _safe_get_spreadsheet(
+        sheet_service, ss_id, fields="sheets(properties(sheetId,title))"
+    )
     summary_sheet_id = None
     for sheet in spreadsheet.get("sheets", []):
         if sheet["properties"]["title"] == "Summary":
@@ -189,7 +261,7 @@ def generate_summary_for_folder(
         len(final_rows) + 1,
         1,
         len(final_header),
-        "@STRING@",
+        "TEXT",
     )
     # Set header row bold
     format.set_bold_font(sheet_service, ss_id, summary_sheet_id, 1, 1, 1, len(final_header))
@@ -209,14 +281,6 @@ def generate_summary_for_folder(
     # Auto resize columns and adjust width with max 200 pixels
     format.auto_resize_columns(sheet_service, ss_id, summary_sheet_id, 1, len(final_header))
     log.info("Formatting of 'Summary' sheet complete.")
-
-    # log.debug(f"Moving spreadsheet {ss_id} to folder {summary_folder_id}")
-    # google_api.move_file_to_folder(drive_service, ss_id, summary_folder_id)
-    # log.info(f"✅ Summary successfully created: {summary_name}")
-
-    # log.info(f"Starting deduplication for: {summary_name}")
-    # deduplication.deduplicate_summary(ss_id)
-    # log.info(f"✅ Deduplication completed for: {summary_name}")
 
 
 if __name__ == "__main__":
