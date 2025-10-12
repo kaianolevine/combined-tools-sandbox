@@ -98,17 +98,12 @@ def publish_private_history(drive_service, sheets_service):
 
     combined = existing_data + new_entries
 
-    # Ensure each row has at least 6 columns
-    for row in combined:
-        while len(row) < 6:
-            row.append("")
-
-    # Sort descending by Last Play Time string in fifth column, safely
+    # Sort descending by first column as datetime string
     def safe_sort_key(row):
         try:
-            return datetime.datetime.strptime(row[4], "%Y-%m-%d %H:%M")
+            return datetime.datetime.strptime(row[0], "%Y-%m-%d %H:%M")
         except Exception:
-            return datetime.datetime.min  # Push blank/malformed to bottom
+            return datetime.datetime.min
 
     combined.sort(key=safe_sort_key, reverse=True)
 
