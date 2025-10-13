@@ -2,7 +2,7 @@ import pytz
 import datetime
 from urllib.parse import urlencode
 from core import logger
-from tools.live_music_history import config
+import config
 import core.m3u_parsing as m3u_parsing
 from core import google_drive
 from core import google_sheets
