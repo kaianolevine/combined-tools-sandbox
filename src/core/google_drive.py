@@ -91,7 +91,17 @@ def list_files_in_folder(
 
 def list_music_files(service, folder_id):
     query = f"'{folder_id}' in parents and mimeType contains 'audio'"
-    results = service.files().list(q=query, fields="files(id, name)").execute()
+    results = (
+        service.files()
+        .list(
+            q=query,
+            spaces="drive",
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
+        .execute()
+    )
     return results.get("files", [])
 
 
