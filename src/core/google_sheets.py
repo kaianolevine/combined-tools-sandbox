@@ -190,7 +190,7 @@ def sort_sheet_by_column(
     )
 
     # Get sheet ID from metadata
-    metadata = get_sheet_metadata(spreadsheet_id)
+    metadata = get_sheet_metadata(service, spreadsheet_id)
     sheet_id = None
     for sheet in metadata.get("sheets", []):
         if sheet["properties"]["title"] == sheet_name:
