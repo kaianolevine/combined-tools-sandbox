@@ -6,6 +6,7 @@ import config
 import core.m3u_parsing as m3u_parsing
 from core import google_drive
 from core import google_sheets
+from googleapiclient.errors import HttpError
 
 log = logger.get_logger()
 # from __future__ import print_function
@@ -18,6 +19,7 @@ def build_youtube_links(entries):
     for _, title, artist in entries:
         query = urlencode({"search_query": f"{title} {artist}"})
         url = f"https://www.youtube.com/results?{query}"
+        log.debug("YouTube link: %s", url)
         links.append([f'=HYPERLINK("{url}", "YouTube Search")'])
     return links
 
@@ -29,6 +31,11 @@ def write_entries_to_sheet(sheets_service, entries, now):
 
     if not entries:
         log.info("No entries to write. Writing NO_HISTORY message.")
+        log.debug(
+            "Sheet write range: %s, entries: %s",
+            "A5:B5",
+            [[logger.format_date(now), config.NO_HISTORY]],
+        )
         sheet.values().update(
             spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
             range="A5:B5",
@@ -38,6 +45,7 @@ def write_entries_to_sheet(sheets_service, entries, now):
         return
 
     log.info("Writing %d entries to sheet...", len(entries))
+    log.debug("Sheet write range: %s, entries: %s", f"A5:C{5+len(entries)-1}", entries)
     sheet.values().update(
         spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
         range=f"A5:C{5+len(entries)-1}",
@@ -45,15 +53,20 @@ def write_entries_to_sheet(sheets_service, entries, now):
         body={"values": entries},
     ).execute()
 
-    links = build_youtube_links(entries)
-    log.info("Writing YouTube links for entries...")
-    sheet.values().update(
-        spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
-        range=f"D5:D{5+len(links)-1}",
-        valueInputOption="USER_ENTERED",
-        body={"values": links},
-    ).execute()
-    log.info("Finished writing entries and links to sheet.")
+    try:
+        log.info("Writing %d links to sheet...", len(entries))
+        links = build_youtube_links(entries)
+        log.debug("Link write range: %s, links: %s", f"D5:D{5+len(links)-1}", links)
+        sheet.values().update(
+            spreadsheetId=config.LIVE_HISTORY_SPREADSHEET_ID,
+            range=f"D5:D{5+len(links)-1}",
+            valueInputOption="USER_ENTERED",
+            body={"values": links},
+        ).execute()
+        log.info("Finished writing entries and links to sheet.")
+    except HttpError as e:
+        log.warning("Skipping YouTube links due to sheet restriction: %s", e)
+        log.debug("Skipping link write due to HttpError.")
 
 
 # --- SHEET READING AND PUBLISHING HISTORY ---
@@ -78,6 +91,7 @@ def read_existing_entries(sheets_service, cutoff):
             except Exception:
                 pass
     log.info("Found %d existing entries after cutoff.", len(existing_data))
+    log.debug("Existing entries after filtering: %s", existing_data)
     return existing_data
 
 
@@ -128,8 +142,10 @@ def publish_history(drive_service, sheets_service):
         for r in new_entries
         if tz.localize(datetime.datetime.strptime(r[0], "%Y-%m-%d %H:%M")) >= cutoff
     ]
+    log.debug("New entries after filtering: %s", new_entries)
 
-    combined = existing_data + new_entries
+    combined = [row[:3] for row in (existing_data + new_entries)]
+    log.debug("Combined entries (first 3): %s", combined[:3])
     log.info("Total combined entries to write: %d", len(combined))
 
     write_entries_to_sheet(sheets_service, combined, now)
