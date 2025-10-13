@@ -13,7 +13,7 @@ DJ_SETS_FOLDER_ID_OLD = "11zVwUZLDfB6uXpwNdA3c4Xsev2aG26fc"  # My Drive/Deejay M
 DJ_SETS_FOLDER_ID = "1A0tKQ2DBXI1Bt9h--olFwnBNne3am-rL"  # KaianoLevineWCS/DJ Sets
 
 MUSIC_UPLOAD_SOURCE_FOLDER_ID = "1Iu5TwzOXVqCDef2X8S5TZcFo1NdSHpRU"  # Music tagging input
-MUSIC_TAGGING_OUTPUT_FOLDER_ID = "1unEJWqYnmiQ3MbaeuBtuxqvz4FJSXBAL"  # Music tagging output
+MUSIC_TAGGING_OUTPUT_FOLDER_ID = "17LjjgX4bFwxR4NOnnT38Aflp8DSPpjOu"  # "1unEJWqYnmiQ3MbaeuBtuxqvz4FJSXBAL"  # Music tagging output
 SEP_CHARACTERS = "__"
 
 VDJ_HISTORY_FOLDER_ID = "1FzuuO3xmL2n-8pZ_B-FyrvGWaLxLED3o"  # VDJ/History

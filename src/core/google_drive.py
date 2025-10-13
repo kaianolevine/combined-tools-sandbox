@@ -91,7 +91,17 @@ def list_files_in_folder(
 
 def list_music_files(service, folder_id):
     query = f"'{folder_id}' in parents and mimeType contains 'audio'"
-    results = service.files().list(q=query, fields="files(id, name)").execute()
+    results = (
+        service.files()
+        .list(
+            q=query,
+            spaces="drive",
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
+        .execute()
+    )
     return results.get("files", [])
 
 
@@ -285,9 +295,12 @@ def download_file(service, file_id, destination_path):
 
 
 def upload_file(service, filepath, folder_id):
+    log.debug(f"Filepath: {filepath}, Folder ID: {folder_id}")
     file_metadata = {"name": os.path.basename(filepath), "parents": [folder_id]}
     media = MediaFileUpload(filepath, resumable=True)
-    service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    service.files().create(
+        body=file_metadata, media_body=media, fields="id", supportsAllDrives=True
+    ).execute()
 
 
 def upload_to_drive(drive, filepath, parent_id):
